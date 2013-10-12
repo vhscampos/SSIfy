@@ -92,12 +92,13 @@ void SSIfy::dragon(Instruction* V) {
 		//
 		// EXCEPTIONS
 		//  - TerminatorInst
+		//  - PhiOp
 		//
 		// These are exceptions because a copy created for them would
-		// break the program.
+		// break the program, or not make sense.
 		//
 		else if (V->getType()->isIntegerTy()) {
-			if (!isa<TerminatorInst>(use_inst)) {
+			if (!isa<TerminatorInst>(use_inst) && !isa<PHINode>(use_inst)) {
 				// Uses (downwards)	FIXME: only with integer variables
 				if (USES_DOWN) {
 					Idown.insert(ProgramPoint(use_inst, ProgramPoint::Self));
@@ -197,12 +198,23 @@ void SSIfy::split(Instruction* V, std::set<ProgramPoint> Iup,
 		}
 	}
 
+//	for (std::set<ProgramPoint>::iterator sit = Sdown.begin(), send =
+//			Sdown.end(); sit != send; ++sit) {
+//		errs() << (*sit).I->getName() << " " << (*sit).P << "\n";
+//	}
+//	errs() << "\n";
+
 	// Finally
 	std::set<ProgramPoint> S;
 	S.insert(Iup.begin(), Iup.end());
 	S.insert(Idown.begin(), Idown.end());
 	S.insert(Sup.begin(), Sup.end());
 	S.insert(Sdown.begin(), Sdown.end());
+
+//	for (std::set<ProgramPoint>::iterator sit = S.begin(), send = S.end();
+//			sit != send; ++sit) {
+//		errs() << (*sit).I->getName() << " " << (*sit).P << "\n";
+//	}
 
 	/*
 	 * 	Split live range of v by inserting sigma, phi, and copies
@@ -243,10 +255,6 @@ void SSIfy::split(Instruction* V, std::set<ProgramPoint> Iup,
 				errs() << "Created " << new_phi->getName() << "\n";
 //				this->versions[V].insert(new_phi);
 			} else if (is_branch(point)) {
-				if (point.P != ProgramPoint::Out) {
-					errs() << "Problem here";
-				}
-
 				// sigma
 				// Insert one sigma in each of the successors
 				BasicBlock* BBparent = point.I->getParent();
@@ -265,6 +273,10 @@ void SSIfy::split(Instruction* V, std::set<ProgramPoint> Iup,
 				}
 			} else {
 				// copy
+				// FIXME: TEMPORARY SOLUTION!!!
+				if (is_SSIcopy(point.I)) {
+					continue;
+				}
 
 				// Zero value
 				ConstantInt* zero = ConstantInt::get(
@@ -319,13 +331,14 @@ void SSIfy::rename(BasicBlock* BB, RenamingStack& stack) {
 		// foreach instruction u in n that uses v
 		// We do this renaming only if it is not a SSI_phi
 		// because renaming in SSI_phi is done in a step afterwards
-		if (!phi || !phi->getName().startswith(phiname)) {
+		if (!phi || !is_SSIphi(phi)) {
 			for (User::op_iterator i = I->op_begin(), e = I->op_end(); i != e;
 					++i) {
 				Value *used = *i;
 
 				if (used == V) {
 					set_use(stack, I);
+					break;
 				}
 			}
 		}
@@ -339,11 +352,12 @@ void SSIfy::rename(BasicBlock* BB, RenamingStack& stack) {
 
 				if (incoming_value == V) {
 					set_def(stack, phi);
+					break;
 				}
 			}
 		}
 		// copy
-		else if (is_copy(I)) {
+		else if (is_SSIcopy(I)) {
 			Value* operand = I->getOperand(0);
 
 			if (operand == V) {
@@ -360,7 +374,7 @@ void SSIfy::rename(BasicBlock* BB, RenamingStack& stack) {
 				BBsucc->getFirstInsertionPt(); BBit != BBend; ++BBit) {
 			PHINode* phi = dyn_cast<PHINode>(&*BBit);
 
-			if (phi && phi->getName().startswith(phiname)) {
+			if (phi && is_SSIphi(phi)) {
 				set_use(stack, phi, BB);
 			}
 		}
@@ -398,14 +412,21 @@ void SSIfy::set_use(RenamingStack& stack, Instruction* inst, BasicBlock* from) {
 		if (!from) {
 			if (!this->DTmap->dominates(popped, inst)) {
 				stack.pop();
+				errs() << "set_use: Popping " << popped->getName()
+						<< " to the stack of " << stack.getValue()->getName()
+						<< "\n";
 			} else {
 				break;
 			}
 		}
 		// Renaming inside SSI_phi
+		// TODO: may need revamp!
 		else {
 			if (popped == inst) {
 				stack.pop();
+				errs() << "set_usephi: Popping " << popped->getName()
+						<< " to the stack of " << stack.getValue()->getName()
+						<< "\n";
 			} else {
 				break;
 			}
@@ -428,9 +449,9 @@ void SSIfy::set_use(RenamingStack& stack, Instruction* inst, BasicBlock* from) {
 						<< " in " << inst->getName() << " to "
 						<< new_name->getName() << "\n";
 				phi->setIncomingValue(index, new_name);
-			}
 
-			errs() << *phi << "\n";
+				errs() << *phi << "\n";
+			}
 		}
 	}
 }
@@ -611,6 +632,18 @@ void SSIfy::clean(Instruction* V) {
 //	return false;
 //}
 
+bool SSIfy::is_SSIphi(const Instruction* I) {
+	return I->getName().startswith(phiname);
+}
+
+bool SSIfy::is_SSIsigma(const Instruction* I) {
+	return I->getName().startswith(signame);
+}
+
+bool SSIfy::is_SSIcopy(const Instruction* I) {
+	return I->getName().startswith(copname);
+}
+
 /*
  * 	For now, we say that a program point I is a join-node
  * 	if it has more than one predecessor and it is an In
@@ -628,24 +661,7 @@ bool SSIfy::is_branch(const ProgramPoint& P) {
 	return isa<BranchInst>(P.I) && (P.P == ProgramPoint::Out);
 }
 
-/*
- * 	Checks if an instruction is a copy instruction
- * 	The only way to identify a copy is by looking at its name
- */
-bool SSIfy::is_copy(const ProgramPoint& P) {
-	return P.I->getName().startswith(copname);
-}
-
-/*
- * 	Checks if an instruction is a copy instruction
- * 	The only way to identify a copy is by looking at its name
- */
-bool SSIfy::is_copy(const Instruction* I) {
-	return I->getName().startswith(copname);
-}
-
 // For a given BasicBlock, return its iterated dominance frontier as a set
-// FIXME: this function may enter in infinite loop if the frontiers themselves form loops
 std::set<BasicBlock*> SSIfy::get_iterated_df(BasicBlock* BB) {
 	std::set<BasicBlock*> iterated_df;
 
@@ -719,8 +735,8 @@ std::set<BasicBlock*> SSIfy::get_iterated_pdf(BasicBlock* BB) {
 /*
  * 	Performs intersection between two sets
  */
-std::set<Instruction*> llvm::SSIfy::set_intersection(
-		const std::set<Instruction*>& s1, const std::set<Instruction*>& s2) {
+std::set<Instruction*> SSIfy::set_intersection(const std::set<Instruction*>& s1,
+		const std::set<Instruction*>& s2) {
 	std::set<Instruction*> result;
 
 	for (std::set<Instruction*>::iterator sit = s1.begin(), send = s2.end();
@@ -734,7 +750,7 @@ std::set<Instruction*> llvm::SSIfy::set_intersection(
 	return result;
 }
 
-std::set<Instruction*> llvm::SSIfy::set_union(const std::set<Instruction*>& s1,
+std::set<Instruction*> SSIfy::set_union(const std::set<Instruction*>& s1,
 		const std::set<Instruction*>& s2) {
 	std::set<Instruction*> result;
 
@@ -744,8 +760,8 @@ std::set<Instruction*> llvm::SSIfy::set_union(const std::set<Instruction*>& s1,
 	return result;
 }
 
-std::set<Instruction*> llvm::SSIfy::set_difference(
-		const std::set<Instruction*>& s1, const std::set<Instruction*>& s2) {
+std::set<Instruction*> SSIfy::set_difference(const std::set<Instruction*>& s1,
+		const std::set<Instruction*>& s2) {
 	std::set<Instruction*> result;
 
 	for (std::set<Instruction*>::iterator sit = s1.begin(), send = s2.end();
@@ -764,15 +780,14 @@ std::set<Instruction*> llvm::SSIfy::set_difference(
  * 	Actual instruction is defined as not being created by us,
  * 	that is, sigma, artificial phi, and copy.
  */
-bool llvm::SSIfy::is_actual(const Instruction* I) {
-	const StringRef& name = I->getName();
-	if (name.startswith(signame)) {
+bool SSIfy::is_actual(const Instruction* I) {
+	if (is_SSIphi(I)) {
 		return false;
 	}
-	if (name.startswith(phiname)) {
+	if (is_SSIsigma(I)) {
 		return false;
 	}
-	if (name.startswith(copname)) {
+	if (is_SSIcopy(I)) {
 		return false;
 	}
 
@@ -792,8 +807,22 @@ ProgramPoint::ProgramPoint(Instruction* I, Position P) :
 		I(I), P(P) {
 }
 
+// Two ProgramPoints are equal iff they are of the same region type and:
+//     - if they are Self, their instruction should be the same.
+//     - if not, their instructions' parents should be the same.
 bool ProgramPoint::operator==(const ProgramPoint& o) const {
-	return (this->I == o.I) && (this->P == o.P);
+	if (this->P != o.P) {
+		return false;
+	}
+
+	if (this->P == ProgramPoint::Self) {
+		return this->I == o.I;
+	}
+
+	const BasicBlock* this_I_parent = this->I->getParent();
+	const BasicBlock* o_I_parent = o.I->getParent();
+
+	return this_I_parent == o_I_parent;
 }
 
 bool ProgramPoint::operator!=(const ProgramPoint& o) const {
@@ -801,17 +830,31 @@ bool ProgramPoint::operator!=(const ProgramPoint& o) const {
 }
 
 bool ProgramPoint::operator<(const ProgramPoint& o) const {
-	if (this->I < o.I)
+	if (this->P < o.P) {
 		return true;
-	if (this->I == o.I)
-		if (this->P < o.P)
-			return true;
+	}
+	if (this->P > o.P) {
+		return false;
+	}
 
-	return false;
+	if (this->P == ProgramPoint::Self) {
+		return this->I < o.I;
+	}
+
+	const BasicBlock* this_I_parent = this->I->getParent();
+	const BasicBlock* o_I_parent = o.I->getParent();
+
+	return this_I_parent < o_I_parent;
+}
+
+bool ProgramPoint::operator>(const ProgramPoint& o) const {
+	return !(*this == o) && !(*this < o);
 }
 
 /*
- * Checks if this program point is not a definition of V already
+ * Checks if this program point doesn't have a definition of V already
+ * We have three cases: sigma, phi, or copy
+ * Each one has a different logic.
  */
 bool ProgramPoint::not_definition_of(const Value* V) const {
 	const Instruction* I = this->I;
@@ -828,32 +871,55 @@ bool ProgramPoint::not_definition_of(const Value* V) const {
 
 			const PHINode* op = cast<PHINode>(&*BBit);
 
-			unsigned n = op->getNumIncomingValues();
-//			// Sigma
-//			if (n == 1) {
-//				if (op->getIncomingValue(0) == V) {
-//					return false;
-//				}
-//			}
-			// Phi
-//			else {
-			unsigned i;
-			for (i = 0; i < n; ++i) {
-				if (op->getIncomingValue(i) == V) {
-					return false;
+			if (SSIfy::is_SSIphi(op)) {
+				unsigned n = op->getNumIncomingValues();
+				unsigned i;
+				for (i = 0; i < n; ++i) {
+					if (op->getIncomingValue(i) == V) {
+						return false;
+					}
 				}
 			}
 		}
-//			}
 		break;
 
 	case ProgramPoint::Out:
+		// sigma case
+		for (succ_const_iterator BBsuccit = succ_begin(BB), BBsuccend =
+				succ_end(BB); BBsuccit != BBsuccend; ++BBsuccit) {
+			const BasicBlock* BBsucc = *BBsuccit;
+
+			for (BasicBlock::const_iterator BBit = BBsucc->begin(), BBend =
+					BBsucc->getFirstNonPHI(); BBit != BBend; ++BBit) {
+
+				const PHINode* op = cast<PHINode>(&*BBit);
+
+				if (SSIfy::is_SSIsigma(op)) {
+					unsigned n = op->getNumIncomingValues();
+					unsigned i;
+					for (i = 0; i < n; ++i) {
+						if (op->getIncomingValue(i) == V) {
+							return false;
+						}
+					}
+				}
+			}
+		}
 		break;
 
 	case ProgramPoint::Self:
-		if (SSIfy::is_copy(I)) {
+		// copy case
+		// we check this case by looking at the instruction AFTER, since
+		// because I is actually the instruction for which a copy would have
+		// been created. This copy, therefore, is the next instruction.
+
+		// This next line is just a simple way to get the next instruction.
+		// Don't panic.
+		const Instruction* next = &*(++BasicBlock::const_iterator(*I));
+
+		if (SSIfy::is_SSIcopy(next)) {
 			// Check if operand is V
-			if (I->getOperand(0) == V) {
+			if (next->getOperand(0) == V) {
 				return false;
 			}
 		}
@@ -861,10 +927,6 @@ bool ProgramPoint::not_definition_of(const Value* V) const {
 	}
 
 	return true;
-}
-
-bool ProgramPoint::operator>(const ProgramPoint& o) const {
-	return !(*this == o) && !(*this < o);
 }
 
 const DominanceFrontier::DomSetType &

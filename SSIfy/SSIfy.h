@@ -81,10 +81,12 @@ struct SSIfy: public FunctionPass {
 
 //	bool check_if_necessary(Instruction* V, Instruction* pos);
 
+	static bool is_SSIphi(const Instruction* I);
+	static bool is_SSIsigma(const Instruction* I);
+	static bool is_SSIcopy(const Instruction* I);
 	static bool is_join(const ProgramPoint& P);
 	static bool is_branch(const ProgramPoint& P);
 	static bool is_copy(const ProgramPoint& P);
-	static bool is_copy(const Instruction* I);
 	static bool is_actual(const Instruction* I);
 
 	std::set<BasicBlock*> get_iterated_df(BasicBlock* BB);
