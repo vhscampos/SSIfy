@@ -49,6 +49,8 @@ struct SSIfy: public FunctionPass {
 	DominanceFrontier* DFmap;
 	PostDominanceFrontier* PDFmap;
 
+	// This map associates variables with the set of new variables
+	// that have been created for them
 	DenseMap<Value*, std::set<Instruction*> > versions;
 
 	SSIfy() :
@@ -72,21 +74,14 @@ struct SSIfy: public FunctionPass {
 
 	std::set<Instruction*> set_intersection(const std::set<Instruction*>& s1,
 			const std::set<Instruction*>& s2);
-
 	std::set<Instruction*> set_union(const std::set<Instruction*>& s1,
 			const std::set<Instruction*>& s2);
-
 	std::set<Instruction*> set_difference(const std::set<Instruction*>& s1,
 			const std::set<Instruction*>& s2);
-
-//	bool check_if_necessary(Instruction* V, Instruction* pos);
 
 	static bool is_SSIphi(const Instruction* I);
 	static bool is_SSIsigma(const Instruction* I);
 	static bool is_SSIcopy(const Instruction* I);
-	static bool is_join(const ProgramPoint& P);
-	static bool is_branch(const ProgramPoint& P);
-	static bool is_copy(const ProgramPoint& P);
 	static bool is_actual(const Instruction* I);
 
 	std::set<BasicBlock*> get_iterated_df(BasicBlock* BB);
@@ -109,6 +104,10 @@ public:
 	bool operator!=(const ProgramPoint& o) const;
 	bool operator<(const ProgramPoint& o) const;
 	bool operator>(const ProgramPoint& o) const;
+
+	inline bool is_join() const;
+	inline bool is_branch() const;
+	inline bool is_copy() const;
 
 	Instruction* I;
 	Position P;

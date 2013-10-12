@@ -92,7 +92,7 @@ void SSIfy::dragon(Instruction* V) {
 		//
 		// EXCEPTIONS
 		//  - TerminatorInst
-		//  - PhiOp
+		//  - PHINode
 		//
 		// These are exceptions because a copy created for them would
 		// break the program, or not make sense.
@@ -128,13 +128,14 @@ void SSIfy::split(Instruction* V, std::set<ProgramPoint> Iup,
 
 	errs() << "Splitting " << V->getName() << "\n";
 
+	// Creation of the Sup set. Its logic is defined in the referenced paper.
 	for (std::set<ProgramPoint>::iterator sit = Iup.begin(), send = Iup.end();
 			sit != send; ++sit) {
 		ProgramPoint point = *sit;
 		Instruction* I = point.I;
 		BasicBlock* BBparent = I->getParent();
 
-		if (is_join(point)) {
+		if (point.is_join()) {
 			for (pred_iterator PI = pred_begin(BBparent), E = pred_end(
 					BBparent); PI != E; ++PI) {
 				BasicBlock *BBpred = *PI;
@@ -164,15 +165,15 @@ void SSIfy::split(Instruction* V, std::set<ProgramPoint> Iup,
 	std::set<ProgramPoint> NewSet;
 	NewSet.insert(Sup.begin(), Sup.end());
 	NewSet.insert(Idown.begin(), Idown.end());
-// FIXME:	NewSet.insert(ProgramPoint(V, ProgramPoint::Self));
 
+	// Creation of Sdown. Logic defined in the paper as well.
 	for (std::set<ProgramPoint>::iterator sit = NewSet.begin(), send =
 			NewSet.end(); sit != send; ++sit) {
 		ProgramPoint point = *sit;
 		Instruction* I = point.I;
 		BasicBlock* BBparent = I->getParent();
 
-		if (is_branch(point)) {
+		if (point.is_branch()) {
 			for (succ_iterator PI = succ_begin(BBparent), E = succ_end(
 					BBparent); PI != E; ++PI) {
 				BasicBlock *BBsucc = *PI;
@@ -227,7 +228,7 @@ void SSIfy::split(Instruction* V, std::set<ProgramPoint> Iup,
 			Instruction* insertion_point = point.I;
 			ProgramPoint::Position relative_position = point.P;
 
-			if (is_join(point)) {
+			if (point.is_join()) {
 				// phi
 				unsigned numReservedValues = std::distance(
 						pred_begin(insertion_point->getParent()),
@@ -254,7 +255,7 @@ void SSIfy::split(Instruction* V, std::set<ProgramPoint> Iup,
 
 				errs() << "Created " << new_phi->getName() << "\n";
 //				this->versions[V].insert(new_phi);
-			} else if (is_branch(point)) {
+			} else if (point.is_branch()) {
 				// sigma
 				// Insert one sigma in each of the successors
 				BasicBlock* BBparent = point.I->getParent();
@@ -274,6 +275,8 @@ void SSIfy::split(Instruction* V, std::set<ProgramPoint> Iup,
 			} else {
 				// copy
 				// FIXME: TEMPORARY SOLUTION!!!
+				// If the program point is in fact an SSI_copy
+				// we ignore it. Check with Fernando.
 				if (is_SSIcopy(point.I)) {
 					continue;
 				}
@@ -405,27 +408,29 @@ void SSIfy::set_use(RenamingStack& stack, Instruction* inst, BasicBlock* from) {
 	Value* V = stack.getValue();
 	Instruction* popped = 0;
 
-	while (!stack.empty()) {
-		popped = stack.peek();
+	// If from != null, we are dealing with a renaming
+	// inside a SSI_phi.
+	if (!from) {
+		while (!stack.empty()) {
+			popped = stack.peek();
 
-		// Renaming in general instruction
-		if (!from) {
 			if (!this->DTmap->dominates(popped, inst)) {
 				stack.pop();
 				errs() << "set_use: Popping " << popped->getName()
-						<< " to the stack of " << stack.getValue()->getName()
+						<< " from the stack of " << stack.getValue()->getName()
 						<< "\n";
 			} else {
 				break;
 			}
 		}
-		// Renaming inside SSI_phi
-		// TODO: may need revamp!
-		else {
+	} else {
+		while (!stack.empty()) {
+			popped = stack.peek();
+
 			if (popped == inst) {
 				stack.pop();
 				errs() << "set_usephi: Popping " << popped->getName()
-						<< " to the stack of " << stack.getValue()->getName()
+						<< " from the stack of " << stack.getValue()->getName()
 						<< "\n";
 			} else {
 				break;
@@ -433,6 +438,9 @@ void SSIfy::set_use(RenamingStack& stack, Instruction* inst, BasicBlock* from) {
 		}
 	}
 
+	// If the stack has become empty, it means that the last valid
+	// definition is actually V itself, not popped. Otherwise, popped
+	// would still be in stack, therefore this wouldn't be empty.
 	Instruction* new_name = stack.empty() ? cast<Instruction>(V) : popped;
 
 	if (new_name != V) {
@@ -642,23 +650,6 @@ bool SSIfy::is_SSIsigma(const Instruction* I) {
 
 bool SSIfy::is_SSIcopy(const Instruction* I) {
 	return I->getName().startswith(copname);
-}
-
-/*
- * 	For now, we say that a program point I is a join-node
- * 	if it has more than one predecessor and it is an In
- */
-bool SSIfy::is_join(const ProgramPoint& P) {
-	return !P.I->getParent()->getSinglePredecessor()
-			&& (P.P == ProgramPoint::In);
-}
-
-/*
- * 	For now, we say that a program point I is a branch-node
- * 	if it is a branch node indeed and it is an Out
- */
-bool SSIfy::is_branch(const ProgramPoint& P) {
-	return isa<BranchInst>(P.I) && (P.P == ProgramPoint::Out);
 }
 
 // For a given BasicBlock, return its iterated dominance frontier as a set
@@ -991,4 +982,17 @@ Instruction * RenamingStack::peek() {
 
 bool RenamingStack::empty() const {
 	return this->stack.empty();
+}
+
+bool ProgramPoint::is_join() const {
+	return !this->I->getParent()->getSinglePredecessor()
+			&& (this->P == ProgramPoint::In);
+}
+
+bool ProgramPoint::is_branch() const {
+	return isa<BranchInst>(this->I) && (this->P == ProgramPoint::Out);
+}
+
+bool ProgramPoint::is_copy() const {
+	return this->P == ProgramPoint::Self;
 }
