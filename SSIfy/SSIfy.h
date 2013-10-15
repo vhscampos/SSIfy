@@ -70,7 +70,7 @@ struct SSIfy: public FunctionPass {
 	void rename(BasicBlock* BB, RenamingStack& stack);
 	void set_def(RenamingStack& stack, Instruction* inst);
 	void set_use(RenamingStack& stack, Instruction* inst, BasicBlock* from = 0);
-	void clean(Instruction* V);
+	void clean();
 
 	std::set<Instruction*> set_intersection(const std::set<Instruction*>& s1,
 			const std::set<Instruction*>& s2);

@@ -46,6 +46,8 @@ bool SSIfy::runOnFunction(Function &F) {
 		}
 	}
 
+	clean();
+
 	delete this->PDFmap;
 
 	return true;
@@ -114,7 +116,7 @@ void SSIfy::dragon(Instruction* V) {
 
 	split(V, Iup, Idown);
 	rename_initial(V);
-	clean(V);
+//	clean(V);
 }
 
 /*
@@ -254,7 +256,7 @@ void SSIfy::split(Instruction* V, std::set<ProgramPoint> Iup,
 				}
 
 				errs() << "Created " << new_phi->getName() << "\n";
-//				this->versions[V].insert(new_phi);
+				this->versions[V].insert(new_phi);
 			} else if (point.is_branch()) {
 				// sigma
 				// Insert one sigma in each of the successors
@@ -270,7 +272,7 @@ void SSIfy::split(Instruction* V, std::set<ProgramPoint> Iup,
 					new_sigma->addIncoming(V, BBparent);
 
 					errs() << "Created " << new_sigma->getName() << "\n";
-//					this->versions[V].insert(new_sigma);
+					this->versions[V].insert(new_sigma);
 				}
 			} else {
 				// copy
@@ -298,7 +300,7 @@ void SSIfy::split(Instruction* V, std::set<ProgramPoint> Iup,
 				}
 
 				errs() << "Created " << new_copy->getName() << "\n";
-//				this->versions[V].insert(new_copy);
+				this->versions[V].insert(new_copy);
 			}
 		}
 	}
@@ -354,7 +356,7 @@ void SSIfy::rename(BasicBlock* BB, RenamingStack& stack) {
 //				Value* incoming_value = phi->getIncomingValue(i);
 //
 //				if (incoming_value == V) {
-					set_def(stack, phi);
+			set_def(stack, phi);
 //					break;
 //				}
 //			}
@@ -364,7 +366,7 @@ void SSIfy::rename(BasicBlock* BB, RenamingStack& stack) {
 //			Value* operand = I->getOperand(0);
 //
 //			if (operand == V) {
-				set_def(stack, I);
+			set_def(stack, I);
 //			}
 		}
 	}
@@ -379,7 +381,6 @@ void SSIfy::rename(BasicBlock* BB, RenamingStack& stack) {
 
 			if (phi && is_SSIphi(phi)) {
 				set_use(stack, phi, BB);
-				set_def(stack, phi);
 			}
 		}
 	}
@@ -428,7 +429,7 @@ void SSIfy::set_use(RenamingStack& stack, Instruction* inst, BasicBlock* from) {
 		while (!stack.empty()) {
 			popped = stack.peek();
 
-			if (popped == inst) {
+			if (!this->DTmap->dominates(popped, from)) {
 				stack.pop();
 				errs() << "set_usephi: Popping " << popped->getName()
 						<< " from the stack of " << stack.getValue()->getName()
@@ -482,55 +483,70 @@ void SSIfy::set_def(RenamingStack& stack, Instruction* inst) {
 
 	stack.push(inst);
 
-	this->versions[stack.getValue()].insert(inst);
+//	this->versions[stack.getValue()].insert(inst);
 }
 
 /*
  * 	Based on my new algorithm. Needs extensive testing.
  */
-void SSIfy::clean(Instruction* V) {
-	if (V->getName() == "tmp2") {
-		errs() << "";
-	}
+void SSIfy::clean() {
 
-	DenseMap<Value*, std::set<Instruction*> >::iterator mit =
-			this->versions.find(V);
+	for (DenseMap<Value*, std::set<Instruction*> >::iterator mit =
+			this->versions.begin(), mend = this->versions.end(); mit != mend;
+			++mit) {
 
-	// If no vars have been created for V, end of the line
-	if (mit == this->versions.end()) {
-		return;
-	}
+		Instruction* V = cast<Instruction>(mit->first);
+		std::set<Instruction*> created_vars = mit->second;
 
-	std::set<Instruction*> created_vars = mit->second;
+		if (V->getName() == "tmp2") {
+			errs() << "";
+		}
 
-	for (std::set<Instruction*>::iterator sit = created_vars.begin(), send =
-			created_vars.end(); sit != send; ++sit) {
-		Instruction* newvar = *sit;
+		for (std::set<Instruction*>::iterator sit = created_vars.begin(), send =
+				created_vars.end(); sit != send; ++sit) {
+			Instruction* newvar = *sit;
 
-		if (!this->DTmap->dominates(V, newvar) && !is_SSIphi(newvar)) {
-			errs() << "Erasing " << newvar->getName() << "\n";
-			newvar->removeFromParent();
-		} else if (is_SSIphi(newvar)) {
-			PHINode* ssi_phi = cast<PHINode>(newvar);
-			bool any_value_diff_V = false;
+			if (is_SSIphi(newvar)) {
+				PHINode* ssi_phi = cast<PHINode>(newvar);
+				bool any_value_diff_V = false;
 
-			for (unsigned i = 0, n = ssi_phi->getNumIncomingValues(); i < n;
-					++i) {
-				const Value* incoming = ssi_phi->getIncomingValue(i);
+				// First case: phis with all incoming values corresponding to
+				// the original value.
+				for (unsigned i = 0, n = ssi_phi->getNumIncomingValues(); i < n;
+						++i) {
+					const Value* incoming = ssi_phi->getIncomingValue(i);
 
-				if (incoming != V) {
-					any_value_diff_V = true;
-					break;
+					if (incoming != V) {
+						any_value_diff_V = true;
+						break;
+					}
 				}
-			}
 
-			if (!any_value_diff_V) {
-				errs() << "Erasing " << ssi_phi->getName() << "\n";
-				ssi_phi->replaceAllUsesWith(V);
-				ssi_phi->removeFromParent();
+				if (!any_value_diff_V) {
+					errs() << "Erasing " << ssi_phi->getName() << "\n";
+					ssi_phi->replaceAllUsesWith(V);
+					ssi_phi->eraseFromParent();
+
+					continue;
+				}
+
+				// Second case
+				// FIXME: may be wrong
+				if (!this->DTmap->dominates(V, newvar)) {
+					errs() << "Erasing " << ssi_phi->getName() << "\n";
+					ssi_phi->replaceAllUsesWith(V);
+					ssi_phi->eraseFromParent();
+				}
+			} else if (is_SSIsigma(newvar) || is_SSIcopy(newvar)) {
+				if (!newvar->hasNUsesOrMore(1)) {
+					newvar->eraseFromParent();
+				}
+			} else {
+				errs() << "Problem here\n";
 			}
 		}
 	}
+
 }
 
 // TODO: remove unnecessary created instructions
