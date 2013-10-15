@@ -114,7 +114,7 @@ void SSIfy::dragon(Instruction* V) {
 
 	split(V, Iup, Idown);
 	rename_initial(V);
-//	clean(V);
+	clean(V);
 }
 
 /*
@@ -349,23 +349,23 @@ void SSIfy::rename(BasicBlock* BB, RenamingStack& stack) {
 		// NEW DEFINITION OF V
 		// sigma or phi
 		if (phi) {
-			// Check if any of the incoming values is V
-			for (unsigned i = 0, n = phi->getNumIncomingValues(); i < n; ++i) {
-				Value* incoming_value = phi->getIncomingValue(i);
-
-				if (incoming_value == V) {
+//			// Check if any of the incoming values is V
+//			for (unsigned i = 0, n = phi->getNumIncomingValues(); i < n; ++i) {
+//				Value* incoming_value = phi->getIncomingValue(i);
+//
+//				if (incoming_value == V) {
 					set_def(stack, phi);
-					break;
-				}
-			}
+//					break;
+//				}
+//			}
 		}
 		// copy
 		else if (is_SSIcopy(I)) {
-			Value* operand = I->getOperand(0);
-
-			if (operand == V) {
+//			Value* operand = I->getOperand(0);
+//
+//			if (operand == V) {
 				set_def(stack, I);
-			}
+//			}
 		}
 	}
 
@@ -379,6 +379,7 @@ void SSIfy::rename(BasicBlock* BB, RenamingStack& stack) {
 
 			if (phi && is_SSIphi(phi)) {
 				set_use(stack, phi, BB);
+				set_def(stack, phi);
 			}
 		}
 	}
@@ -469,6 +470,13 @@ void SSIfy::set_use(RenamingStack& stack, Instruction* inst, BasicBlock* from) {
  * 	instruction inst
  */
 void SSIfy::set_def(RenamingStack& stack, Instruction* inst) {
+	// Check if inst contains an use of V. If not
+	// we get out of here.
+	if (std::find(inst->op_begin(), inst->op_end(), stack.getValue())
+			== inst->op_end()) {
+		return;
+	}
+
 	errs() << "set_def: Pushing " << inst->getName() << " to the stack of "
 			<< stack.getValue()->getName() << "\n";
 
@@ -477,168 +485,196 @@ void SSIfy::set_def(RenamingStack& stack, Instruction* inst) {
 	this->versions[stack.getValue()].insert(inst);
 }
 
-// TODO: remove unnecessary created instructions
+/*
+ * 	Based on my new algorithm. Needs extensive testing.
+ */
 void SSIfy::clean(Instruction* V) {
-	std::set<Instruction*> defined;
-	std::set<Instruction*> used;
-	std::set<Instruction*> web = this->versions[V];
-	std::set<Instruction*> active;
-	bool atleastone = true;
-
-	// CREATION OF THE DEFINED SET
-
-	// initialize active with all actual instructions in the function that are a version of V
-	for (std::set<Instruction*>::iterator web_it = web.begin(), web_end =
-			web.end(); web_it != web_end; ++web_it) {
-		Instruction* I = *web_it;
-		if (is_actual(I)) {
-			active.insert(I);
-		}
+	if (V->getName() == "tmp2") {
+		errs() << "";
 	}
 
-	while (atleastone) {
-		atleastone = false;
+	DenseMap<Value*, std::set<Instruction*> >::iterator mit =
+			this->versions.find(V);
 
-		for (std::set<Instruction*>::iterator ait = active.begin(), aend =
-				active.end(); ait != aend; ++ait) {
-
-			Instruction* I = *ait;
-
-			// IF I is already in the set Defined, we skip it
-			if (defined.find(I) != defined.end()) {
-				continue;
-			}
-
-			atleastone = true;
-
-			for (Value::use_iterator uit = I->use_begin(), uend = I->use_end();
-					uit != uend; ++uit) {
-				Instruction* use = cast<Instruction>(*uit);
-
-				active.insert(use);
-			}
-
-			defined.insert(I);
-		}
+	// If no vars have been created for V, end of the line
+	if (mit == this->versions.end()) {
+		return;
 	}
 
-	// CREATION OF THE USED SET
-	active.clear();
+	std::set<Instruction*> created_vars = mit->second;
 
-	// Initialize active with all instructions that have any use which is in web
-	for (std::set<Instruction*>::iterator wit = web.begin(), wend = web.end();
-			wit != wend; ++wit) {
-		Instruction* I = *wit;
+	for (std::set<Instruction*>::iterator sit = created_vars.begin(), send =
+			created_vars.end(); sit != send; ++sit) {
+		Instruction* newvar = *sit;
 
-		for (User::op_iterator oit = I->op_begin(), oend = I->op_end();
-				oit != oend; ++oit) {
-			Instruction* U = dyn_cast<Instruction>(*oit);
-			if (U && is_actual(U)) {
-				active.insert(U);
-			}
-		}
-	}
+		if (!this->DTmap->dominates(V, newvar) && !is_SSIphi(newvar)) {
+			errs() << "Erasing " << newvar->getName() << "\n";
+			newvar->removeFromParent();
+		} else if (is_SSIphi(newvar)) {
+			PHINode* ssi_phi = cast<PHINode>(newvar);
+			bool any_value_diff_V = false;
 
-	atleastone = true;
-	while (atleastone) {
-		atleastone = false;
+			for (unsigned i = 0, n = ssi_phi->getNumIncomingValues(); i < n;
+					++i) {
+				const Value* incoming = ssi_phi->getIncomingValue(i);
 
-		for (std::set<Instruction*>::iterator ait = active.begin(), aend =
-				active.end(); ait != aend; ++ait) {
-
-			Instruction* I = *ait;
-
-			bool any_use_notin_used = false;
-
-			for (Value::use_iterator uit = I->use_begin(), uend = I->use_end();
-					uit != uend; ++uit) {
-				Instruction* use = cast<Instruction>(*uit);
-
-				// If not in used
-				if (used.find(use) == used.end()) {
-					any_use_notin_used = true;
+				if (incoming != V) {
+					any_value_diff_V = true;
 					break;
 				}
 			}
 
-			// If any use that isn't in used was found, we do not skip
-			if (!any_use_notin_used) {
-				continue;
+			if (!any_value_diff_V) {
+				errs() << "Erasing " << ssi_phi->getName() << "\n";
+				ssi_phi->replaceAllUsesWith(V);
+				ssi_phi->removeFromParent();
 			}
-
-			atleastone = true;
-
-			for (std::set<Instruction*>::iterator wit = web.begin(), wend =
-					web.end(); wit != wend; ++wit) {
-
-				Instruction* version = *wit;
-
-				for (Value::use_iterator uit = I->use_begin(), uend =
-						I->use_end(); uit != uend; ++uit) {
-					Instruction* use = cast<Instruction>(*uit);
-
-					if (version == use) {
-						if (used.find(version) == used.end()) {
-							active.insert(version);
-							used.insert(version);
-						}
-					}
-				}
-			}
-		}
-	}
-
-	// NOW, THE REMOVAL STEP
-	std::set<Instruction*> live = set_intersection(defined, used);
-
-	// For each non actual instruction 'version' in web
-	for (std::set<Instruction*>::iterator wit = web.begin(), wend = web.end();
-			wit != wend; ++wit) {
-		Instruction* version = *wit;
-
-		if (!is_actual(version)) {
-			// For each v_i operand of 'version' so that v_i not in 'live'
-			for (User::op_iterator oit = version->op_begin(), oend =
-					version->op_end(); oit != oend; ++oit) {
-				Instruction* operand = dyn_cast<Instruction>(*oit);
-
-				if (operand && (web.find(operand) != web.end())) {
-					// if v_i is not in live:
-					// replace v_i with undef
-					UndefValue* undef = UndefValue::get(operand->getType());
-					version->replaceUsesOfWith(operand, undef);
-				}
-			}
-
-			// if version == undef or all uses of version are undef
-			// the latter basic means that the use set of version is empty
-			if (version->use_empty()) {
-				version->eraseFromParent();
-			}
-
 		}
 	}
 }
 
-///*
-// *  Check if the creation of a new definition of V after the instruction pos
-// *  is really necessary.
-// *
-// *  It is so if there is any use of V in the dominator tree of pos
-// */
-//bool SSIfy::check_if_necessary(Instruction* V, Instruction* pos)
-//{
-//	for (Value::use_iterator uit = V->use_begin(), uend = V->use_end();
-//			uit != uend; ++uit) {
-//		const Instruction* use = cast<Instruction>(*uit);
-//
-//		if (this->DTmap->dominates(pos, use)) {
-//			return true;
-//		}
-//	}
-//
-//	return false;
-//}
+// TODO: remove unnecessary created instructions
+/*void SSIfy::clean(Instruction* V) {
+ std::set<Instruction*> defined;
+ std::set<Instruction*> used;
+ std::set<Instruction*> web = this->versions[V];
+ std::set<Instruction*> active;
+ bool atleastone = true;
+
+ // CREATION OF THE DEFINED SET
+
+ // initialize active with all actual instructions in the function that are a version of V
+ for (std::set<Instruction*>::iterator web_it = web.begin(), web_end =
+ web.end(); web_it != web_end; ++web_it) {
+ Instruction* I = *web_it;
+ if (is_actual(I)) {
+ active.insert(I);
+ }
+ }
+
+ while (atleastone) {
+ atleastone = false;
+
+ for (std::set<Instruction*>::iterator ait = active.begin(), aend =
+ active.end(); ait != aend; ++ait) {
+
+ Instruction* I = *ait;
+
+ // IF I is already in the set Defined, we skip it
+ if (defined.find(I) != defined.end()) {
+ continue;
+ }
+
+ atleastone = true;
+
+ for (Value::use_iterator uit = I->use_begin(), uend = I->use_end();
+ uit != uend; ++uit) {
+ Instruction* use = cast<Instruction>(*uit);
+
+ active.insert(use);
+ }
+
+ defined.insert(I);
+ }
+ }
+
+ // CREATION OF THE USED SET
+ active.clear();
+
+ // Initialize active with all instructions that have any use which is in web
+ for (std::set<Instruction*>::iterator wit = web.begin(), wend = web.end();
+ wit != wend; ++wit) {
+ Instruction* I = *wit;
+
+ for (User::op_iterator oit = I->op_begin(), oend = I->op_end();
+ oit != oend; ++oit) {
+ Instruction* U = dyn_cast<Instruction>(*oit);
+ if (U && is_actual(U)) {
+ active.insert(U);
+ }
+ }
+ }
+
+ atleastone = true;
+ while (atleastone) {
+ atleastone = false;
+
+ for (std::set<Instruction*>::iterator ait = active.begin(), aend =
+ active.end(); ait != aend; ++ait) {
+
+ Instruction* I = *ait;
+
+ bool any_use_notin_used = false;
+
+ for (Value::use_iterator uit = I->use_begin(), uend = I->use_end();
+ uit != uend; ++uit) {
+ Instruction* use = cast<Instruction>(*uit);
+
+ // If not in used
+ if (used.find(use) == used.end()) {
+ any_use_notin_used = true;
+ break;
+ }
+ }
+
+ // If any use that isn't in used was found, we do not skip
+ if (!any_use_notin_used) {
+ continue;
+ }
+
+ atleastone = true;
+
+ for (std::set<Instruction*>::iterator wit = web.begin(), wend =
+ web.end(); wit != wend; ++wit) {
+
+ Instruction* version = *wit;
+
+ for (Value::use_iterator uit = I->use_begin(), uend =
+ I->use_end(); uit != uend; ++uit) {
+ Instruction* use = cast<Instruction>(*uit);
+
+ if (version == use) {
+ if (used.find(version) == used.end()) {
+ active.insert(version);
+ used.insert(version);
+ }
+ }
+ }
+ }
+ }
+ }
+
+ // NOW, THE REMOVAL STEP
+ std::set<Instruction*> live = set_intersection(defined, used);
+
+ // For each non actual instruction 'version' in web
+ for (std::set<Instruction*>::iterator wit = web.begin(), wend = web.end();
+ wit != wend; ++wit) {
+ Instruction* version = *wit;
+
+ if (!is_actual(version)) {
+ // For each v_i operand of 'version' so that v_i not in 'live'
+ for (User::op_iterator oit = version->op_begin(), oend =
+ version->op_end(); oit != oend; ++oit) {
+ Instruction* operand = dyn_cast<Instruction>(*oit);
+
+ if (operand && (web.find(operand) != web.end())) {
+ // if v_i is not in live:
+ // replace v_i with undef
+ UndefValue* undef = UndefValue::get(operand->getType());
+ version->replaceUsesOfWith(operand, undef);
+ }
+ }
+
+ // if version == undef or all uses of version are undef
+ // the latter basic means that the use set of version is empty
+ if (version->use_empty()) {
+ version->eraseFromParent();
+ }
+
+ }
+ }
+ }*/
 
 bool SSIfy::is_SSIphi(const Instruction* I) {
 	return I->getName().startswith(phiname);
