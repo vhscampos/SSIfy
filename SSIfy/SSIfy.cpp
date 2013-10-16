@@ -49,6 +49,7 @@ bool SSIfy::runOnFunction(Function &F) {
 	clean();
 
 	delete this->PDFmap;
+	this->versions.clear();
 
 	return true;
 }
@@ -445,7 +446,8 @@ void SSIfy::set_use(RenamingStack& stack, Instruction* inst, BasicBlock* from) {
 	// would still be in stack, therefore this wouldn't be empty.
 	Instruction* new_name = stack.empty() ? cast<Instruction>(V) : popped;
 
-	if (new_name != V) {
+	// We shouldn't perform renaming in any of the following cases
+	if ((new_name != V) && (new_name != inst)) {
 		if (!from) {
 			errs() << "set_use: Renaming uses of " << V->getName() << " in "
 					<< inst->getName() << " to " << new_name->getName() << "\n";
@@ -460,7 +462,7 @@ void SSIfy::set_use(RenamingStack& stack, Instruction* inst, BasicBlock* from) {
 						<< new_name->getName() << "\n";
 				phi->setIncomingValue(index, new_name);
 
-				errs() << *phi << "\n";
+//				errs() << *phi << "\n";
 			}
 		}
 	}
@@ -498,13 +500,20 @@ void SSIfy::clean() {
 		Instruction* V = cast<Instruction>(mit->first);
 		std::set<Instruction*> created_vars = mit->second;
 
-		if (V->getName() == "tmp2") {
-			errs() << "";
+		for (std::set<Instruction*>::iterator sit = created_vars.begin(), send =
+						created_vars.end(); sit != send; ++sit) {
+			errs() << "\t" << (*sit)->getName() << "\n";
 		}
+
 
 		for (std::set<Instruction*>::iterator sit = created_vars.begin(), send =
 				created_vars.end(); sit != send; ++sit) {
 			Instruction* newvar = *sit;
+			errs() << newvar->getName() << "\n";
+
+			if (newvar->getName() == "SSI_sigma25") {
+				errs() << "";
+			}
 
 			if (is_SSIphi(newvar)) {
 				PHINode* ssi_phi = cast<PHINode>(newvar);
@@ -532,17 +541,17 @@ void SSIfy::clean() {
 
 				// Second case
 				// FIXME: may be wrong
-				if (!this->DTmap->dominates(V, newvar)) {
+				if (!this->DTmap->dominates(V, ssi_phi)) {
 					errs() << "Erasing " << ssi_phi->getName() << "\n";
 					ssi_phi->replaceAllUsesWith(V);
 					ssi_phi->eraseFromParent();
 				}
 			} else if (is_SSIsigma(newvar) || is_SSIcopy(newvar)) {
-				if (!newvar->hasNUsesOrMore(1)) {
+				if (newvar->use_empty()) {
 					newvar->eraseFromParent();
 				}
 			} else {
-				errs() << "Problem here\n";
+				errs() << "Problem here5\n";
 			}
 		}
 	}

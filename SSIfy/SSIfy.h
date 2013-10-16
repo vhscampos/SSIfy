@@ -18,6 +18,7 @@
 #include "llvm/Analysis/PostDominators.h"
 #include "llvm/Analysis/DominanceFrontier.h"
 #include "llvm/Support/InstIterator.h"
+#include "llvm/ADT/SmallVector.h"
 #include <set>
 #include <deque>
 #include <string>
