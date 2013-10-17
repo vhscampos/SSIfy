@@ -11,9 +11,6 @@
 // in docs/WritingAnLLVMPass.html
 //
 //===----------------------------------------------------------------------===//
-
-#define DEBUG_TYPE "SSIfy"
-
 #include "SSIfy.h"
 
 using namespace llvm;
@@ -23,6 +20,17 @@ const std::string SSIfy::phiname = "SSI_phi";
 const std::string SSIfy::signame = "SSI_sigma";
 const std::string SSIfy::copname = "SSI_copy";
 
+// Command-line options
+static cl::opt<bool> Verbose("v", cl::desc("Print details"));
+static cl::opt<std::string> ProgramPointOptions("set", cl::desc("Starting program points"), cl::Required);
+
+const char* const flags = strdup(ProgramPointOptions.c_str());
+const bool OutConds_Down = flags[0] == '1';
+const bool OutConds_Up = flags[1] == '1';
+const bool Uses_Down = flags[2] == '1';
+const bool Uses_Up = flags[3] == '1';
+
+
 bool SSIfy::runOnFunction(Function &F) {
 	this->F = &F;
 	this->DTmap = &getAnalysis<DominatorTree>();
@@ -30,7 +38,9 @@ bool SSIfy::runOnFunction(Function &F) {
 	this->DFmap = &getAnalysis<DominanceFrontier>();
 	this->PDFmap = new PostDominanceFrontier(this->PDTmap);
 
-	errs() << "Running on function " << F.getName() << "\n";
+	if (Verbose) {
+		errs() << "Running on function " << F.getName() << "\n";
+	}
 
 	// For every instruction in this function, call the SSIfy function
 	Function::iterator Fit, Fend;
@@ -80,12 +90,12 @@ void SSIfy::dragon(Instruction* V) {
 					possible_cmp->use_end(); ii != ee; ++ii) {
 				if (BranchInst* br_inst = dyn_cast<BranchInst>(*ii)) {
 					// (downwards)
-					if (OUTCONDS_DOWN) {
+					if (OutConds_Down) {
 						Idown.insert(ProgramPoint(br_inst, ProgramPoint::Out));
 					}
 
 					// (upwards)
-					if (OUTCONDS_UP) {
+					if (OutConds_Up) {
 						Iup.insert(ProgramPoint(br_inst, ProgramPoint::Out));
 					}
 				}
@@ -103,12 +113,12 @@ void SSIfy::dragon(Instruction* V) {
 		else if (V->getType()->isIntegerTy()) {
 			if (!isa<TerminatorInst>(use_inst) && !isa<PHINode>(use_inst)) {
 				// Uses (downwards)	FIXME: only with integer variables
-				if (USES_DOWN) {
+				if (Uses_Down) {
 					Idown.insert(ProgramPoint(use_inst, ProgramPoint::Self));
 				}
 
 				// Uses (upwards)	FIXME: only with integer variables
-				if (USES_UP) {
+				if (Uses_Up) {
 					Iup.insert(ProgramPoint(use_inst, ProgramPoint::Self));
 				}
 			}
@@ -129,7 +139,9 @@ void SSIfy::split(Instruction* V, std::set<ProgramPoint> Iup,
 	std::set<ProgramPoint> Sup;
 	std::set<ProgramPoint> Sdown;
 
-	errs() << "Splitting " << V->getName() << "\n";
+	if (Verbose) {
+		errs() << "Splitting " << V->getName() << "\n";
+	}
 
 	// Creation of the Sup set. Its logic is defined in the referenced paper.
 	for (std::set<ProgramPoint>::iterator sit = Iup.begin(), send = Iup.end();
@@ -143,20 +155,24 @@ void SSIfy::split(Instruction* V, std::set<ProgramPoint> Iup,
 					BBparent); PI != E; ++PI) {
 				BasicBlock *BBpred = *PI;
 
-				std::set<BasicBlock*> iterated_pdf = get_iterated_pdf(BBpred);
+				SmallPtrSet<BasicBlock*, 4> iterated_pdf = get_iterated_pdf(
+						BBpred);
 
-				for (std::set<BasicBlock*>::iterator sit = iterated_pdf.begin(),
-						send = iterated_pdf.end(); sit != send; ++sit) {
+				for (SmallPtrSet<BasicBlock*, 4>::iterator sit =
+						iterated_pdf.begin(), send = iterated_pdf.end();
+						sit != send; ++sit) {
 					BasicBlock* BB = *sit;
 					Instruction& last = BB->back();
 					Sup.insert(ProgramPoint(&last, ProgramPoint::Out));
 				}
 			}
 		} else {
-			std::set<BasicBlock*> iterated_pdf = get_iterated_pdf(BBparent);
+			SmallPtrSet<BasicBlock*, 4> iterated_pdf = get_iterated_pdf(
+					BBparent);
 
-			for (std::set<BasicBlock*>::iterator sit = iterated_pdf.begin(),
-					send = iterated_pdf.end(); sit != send; ++sit) {
+			for (SmallPtrSet<BasicBlock*, 4>::iterator sit =
+					iterated_pdf.begin(), send = iterated_pdf.end();
+					sit != send; ++sit) {
 				BasicBlock* BB = *sit;
 				Instruction& last = BB->back();
 				Sup.insert(ProgramPoint(&last, ProgramPoint::Out));
@@ -181,20 +197,23 @@ void SSIfy::split(Instruction* V, std::set<ProgramPoint> Iup,
 					BBparent); PI != E; ++PI) {
 				BasicBlock *BBsucc = *PI;
 
-				std::set<BasicBlock*> iterated_df = get_iterated_df(BBsucc);
+				SmallPtrSet<BasicBlock*, 4> iterated_df = get_iterated_df(
+						BBsucc);
 
-				for (std::set<BasicBlock*>::iterator sit = iterated_df.begin(),
-						send = iterated_df.end(); sit != send; ++sit) {
+				for (SmallPtrSet<BasicBlock*, 4>::iterator sit =
+						iterated_df.begin(), send = iterated_df.end();
+						sit != send; ++sit) {
 					BasicBlock* BB = *sit;
 					Instruction& first = BB->front();
 					Sdown.insert(ProgramPoint(&first, ProgramPoint::In));
 				}
 			}
 		} else {
-			std::set<BasicBlock*> iterated_df = get_iterated_df(BBparent);
+			SmallPtrSet<BasicBlock*, 4> iterated_df = get_iterated_df(BBparent);
 
-			for (std::set<BasicBlock*>::iterator sit = iterated_df.begin(),
-					send = iterated_df.end(); sit != send; ++sit) {
+			for (SmallPtrSet<BasicBlock*, 4>::iterator sit =
+					iterated_df.begin(), send = iterated_df.end(); sit != send;
+					++sit) {
 				BasicBlock* BB = *sit;
 				Instruction& first = BB->front();
 				Sdown.insert(ProgramPoint(&first, ProgramPoint::In));
@@ -256,7 +275,10 @@ void SSIfy::split(Instruction* V, std::set<ProgramPoint> Iup,
 					break;
 				}
 
-				errs() << "Created " << new_phi->getName() << "\n";
+				if (Verbose) {
+					errs() << "Created " << new_phi->getName() << "\n";
+				}
+
 				this->versions[V].insert(new_phi);
 			} else if (point.is_branch()) {
 				// sigma
@@ -272,7 +294,10 @@ void SSIfy::split(Instruction* V, std::set<ProgramPoint> Iup,
 							numReservedValues, signame, &BBsucc->front());
 					new_sigma->addIncoming(V, BBparent);
 
-					errs() << "Created " << new_sigma->getName() << "\n";
+					if (Verbose) {
+						errs() << "Created " << new_sigma->getName() << "\n";
+					}
+
 					this->versions[V].insert(new_sigma);
 				}
 			} else {
@@ -300,7 +325,10 @@ void SSIfy::split(Instruction* V, std::set<ProgramPoint> Iup,
 					break;
 				}
 
-				errs() << "Created " << new_copy->getName() << "\n";
+				if (Verbose) {
+					errs() << "Created " << new_copy->getName() << "\n";
+				}
+
 				this->versions[V].insert(new_copy);
 			}
 		}
@@ -326,7 +354,11 @@ void SSIfy::rename_initial(Instruction* V) {
  */
 void SSIfy::rename(BasicBlock* BB, RenamingStack& stack) {
 	const Value* V = stack.getValue();
-	errs() << "Renaming " << V->getName() << " in " << BB->getName() << "\n";
+
+	if (Verbose) {
+		errs() << "Renaming " << V->getName() << " in " << BB->getName()
+				<< "\n";
+	}
 
 	// Iterate over all instructions in BB
 	for (BasicBlock::iterator iit = BB->begin(), iend = BB->end(); iit != iend;
@@ -419,9 +451,12 @@ void SSIfy::set_use(RenamingStack& stack, Instruction* inst, BasicBlock* from) {
 
 			if (!this->DTmap->dominates(popped, inst)) {
 				stack.pop();
-				errs() << "set_use: Popping " << popped->getName()
-						<< " from the stack of " << stack.getValue()->getName()
-						<< "\n";
+
+				if (Verbose) {
+					errs() << "set_use: Popping " << popped->getName()
+							<< " from the stack of "
+							<< stack.getValue()->getName() << "\n";
+				}
 			} else {
 				break;
 			}
@@ -432,9 +467,12 @@ void SSIfy::set_use(RenamingStack& stack, Instruction* inst, BasicBlock* from) {
 
 			if (!this->DTmap->dominates(popped, from)) {
 				stack.pop();
-				errs() << "set_usephi: Popping " << popped->getName()
-						<< " from the stack of " << stack.getValue()->getName()
-						<< "\n";
+
+				if (Verbose) {
+					errs() << "set_usephi: Popping " << popped->getName()
+							<< " from the stack of "
+							<< stack.getValue()->getName() << "\n";
+				}
 			} else {
 				break;
 			}
@@ -449,20 +487,27 @@ void SSIfy::set_use(RenamingStack& stack, Instruction* inst, BasicBlock* from) {
 	// We shouldn't perform renaming in any of the following cases
 	if ((new_name != V) && (new_name != inst)) {
 		if (!from) {
-			errs() << "set_use: Renaming uses of " << V->getName() << " in "
-					<< inst->getName() << " to " << new_name->getName() << "\n";
+
+			if (Verbose) {
+				errs() << "set_use: Renaming uses of " << V->getName() << " in "
+						<< inst->getName() << " to " << new_name->getName()
+						<< "\n";
+			}
+
 			inst->replaceUsesOfWith(V, new_name);
 		} else {
 			PHINode* phi = cast<PHINode>(inst);
 			int index = phi->getBasicBlockIndex(from);
 
 			if (phi->getIncomingValue(index) == V) {
-				errs() << "set_usephi: Renaming uses of " << V->getName()
-						<< " in " << inst->getName() << " to "
-						<< new_name->getName() << "\n";
-				phi->setIncomingValue(index, new_name);
 
-//				errs() << *phi << "\n";
+				if (Verbose) {
+					errs() << "set_usephi: Renaming uses of " << V->getName()
+							<< " in " << inst->getName() << " to "
+							<< new_name->getName() << "\n";
+				}
+
+				phi->setIncomingValue(index, new_name);
 			}
 		}
 	}
@@ -480,8 +525,10 @@ void SSIfy::set_def(RenamingStack& stack, Instruction* inst) {
 		return;
 	}
 
-	errs() << "set_def: Pushing " << inst->getName() << " to the stack of "
-			<< stack.getValue()->getName() << "\n";
+	if (Verbose) {
+		errs() << "set_def: Pushing " << inst->getName() << " to the stack of "
+				<< stack.getValue()->getName() << "\n";
+	}
 
 	stack.push(inst);
 
@@ -500,20 +547,15 @@ void SSIfy::clean() {
 		Instruction* V = cast<Instruction>(mit->first);
 		std::set<Instruction*> created_vars = mit->second;
 
-		for (std::set<Instruction*>::iterator sit = created_vars.begin(), send =
-						created_vars.end(); sit != send; ++sit) {
-			errs() << "\t" << (*sit)->getName() << "\n";
-		}
-
+//		for (std::set<Instruction*>::iterator sit = created_vars.begin(), send =
+//				created_vars.end(); sit != send; ++sit) {
+//			errs() << "\t" << (*sit)->getName() << "\n";
+//		}
 
 		for (std::set<Instruction*>::iterator sit = created_vars.begin(), send =
 				created_vars.end(); sit != send; ++sit) {
 			Instruction* newvar = *sit;
-			errs() << newvar->getName() << "\n";
-
-			if (newvar->getName() == "SSI_sigma25") {
-				errs() << "";
-			}
+//			errs() << newvar->getName() << "\n";
 
 			if (is_SSIphi(newvar)) {
 				PHINode* ssi_phi = cast<PHINode>(newvar);
@@ -532,7 +574,11 @@ void SSIfy::clean() {
 				}
 
 				if (!any_value_diff_V) {
-					errs() << "Erasing " << ssi_phi->getName() << "\n";
+
+					if (Verbose) {
+						errs() << "Erasing " << ssi_phi->getName() << "\n";
+					}
+
 					ssi_phi->replaceAllUsesWith(V);
 					ssi_phi->eraseFromParent();
 
@@ -542,7 +588,11 @@ void SSIfy::clean() {
 				// Second case
 				// FIXME: may be wrong
 				if (!this->DTmap->dominates(V, ssi_phi)) {
-					errs() << "Erasing " << ssi_phi->getName() << "\n";
+
+					if (Verbose) {
+						errs() << "Erasing " << ssi_phi->getName() << "\n";
+					}
+
 					ssi_phi->replaceAllUsesWith(V);
 					ssi_phi->eraseFromParent();
 				}
@@ -714,10 +764,10 @@ bool SSIfy::is_SSIcopy(const Instruction* I) {
 }
 
 // For a given BasicBlock, return its iterated dominance frontier as a set
-std::set<BasicBlock*> SSIfy::get_iterated_df(BasicBlock* BB) {
-	std::set<BasicBlock*> iterated_df;
+SmallPtrSet<BasicBlock*, 4> SSIfy::get_iterated_df(BasicBlock* BB) {
+	SmallPtrSet<BasicBlock*, 4> iterated_df;
 
-	std::deque<BasicBlock*> stack;
+	SmallVector<BasicBlock*, 4> stack;
 	BasicBlock* current = BB;
 
 	// Initialize the stack with the original BasicBlock
@@ -740,7 +790,7 @@ std::set<BasicBlock*> SSIfy::get_iterated_df(BasicBlock* BB) {
 			// Only push to stack if this BasicBlock wasn't seen before
 			// P.S.: insert returns a pair. The second refers to whether
 			// the element was actually inserted or not.
-			if ((iterated_df.insert(BB_infrontier)).second) {
+			if ((iterated_df.insert(BB_infrontier))) {
 				stack.push_back(BB_infrontier);
 			}
 		}
@@ -749,10 +799,10 @@ std::set<BasicBlock*> SSIfy::get_iterated_df(BasicBlock* BB) {
 	return iterated_df;
 }
 
-std::set<BasicBlock*> SSIfy::get_iterated_pdf(BasicBlock* BB) {
-	std::set<BasicBlock*> iterated_pdf;
+SmallPtrSet<BasicBlock*, 4> SSIfy::get_iterated_pdf(BasicBlock* BB) {
+	SmallPtrSet<BasicBlock*, 4> iterated_pdf;
 
-	std::deque<BasicBlock*> stack;
+	SmallVector<BasicBlock*, 4> stack;
 	BasicBlock* current = BB;
 
 	// Initialize the stack with the original BasicBlock
@@ -775,7 +825,7 @@ std::set<BasicBlock*> SSIfy::get_iterated_pdf(BasicBlock* BB) {
 			// Only push to stack if this BasicBlock wasn't seen before
 			// P.S.: insert returns a pair. The second refers to whether
 			// the element was actually inserted or not.
-			if ((iterated_pdf.insert(BB_infrontier)).second) {
+			if ((iterated_pdf.insert(BB_infrontier))) {
 				stack.push_back(BB_infrontier);
 			}
 		}
@@ -785,47 +835,49 @@ std::set<BasicBlock*> SSIfy::get_iterated_pdf(BasicBlock* BB) {
 }
 
 /*
+
  * 	Performs intersection between two sets
+
+ std::set<Instruction*> SSIfy::set_intersection(const std::set<Instruction*>& s1,
+ const std::set<Instruction*>& s2) {
+ std::set<Instruction*> result;
+
+ for (std::set<Instruction*>::iterator sit = s1.begin(), send = s2.end();
+ sit != send; ++sit) {
+ Instruction* value = *sit;
+ if (s2.find(value) != s2.end()) {
+ result.insert(value);
+ }
+ }
+
+ return result;
+ }
+
+ std::set<Instruction*> SSIfy::set_union(const std::set<Instruction*>& s1,
+ const std::set<Instruction*>& s2) {
+ std::set<Instruction*> result;
+
+ result.insert(s1.begin(), s1.end());
+ result.insert(s2.begin(), s2.end());
+
+ return result;
+ }
+
+ std::set<Instruction*> SSIfy::set_difference(const std::set<Instruction*>& s1,
+ const std::set<Instruction*>& s2) {
+ std::set<Instruction*> result;
+
+ for (std::set<Instruction*>::iterator sit = s1.begin(), send = s2.end();
+ sit != send; ++sit) {
+ Instruction* value = *sit;
+ if (s2.find(value) == s2.end()) {
+ result.insert(value);
+ }
+ }
+
+ return result;
+ }
  */
-std::set<Instruction*> SSIfy::set_intersection(const std::set<Instruction*>& s1,
-		const std::set<Instruction*>& s2) {
-	std::set<Instruction*> result;
-
-	for (std::set<Instruction*>::iterator sit = s1.begin(), send = s2.end();
-			sit != send; ++sit) {
-		Instruction* value = *sit;
-		if (s2.find(value) != s2.end()) {
-			result.insert(value);
-		}
-	}
-
-	return result;
-}
-
-std::set<Instruction*> SSIfy::set_union(const std::set<Instruction*>& s1,
-		const std::set<Instruction*>& s2) {
-	std::set<Instruction*> result;
-
-	result.insert(s1.begin(), s1.end());
-	result.insert(s2.begin(), s2.end());
-
-	return result;
-}
-
-std::set<Instruction*> SSIfy::set_difference(const std::set<Instruction*>& s1,
-		const std::set<Instruction*>& s2) {
-	std::set<Instruction*> result;
-
-	for (std::set<Instruction*>::iterator sit = s1.begin(), send = s2.end();
-			sit != send; ++sit) {
-		Instruction* value = *sit;
-		if (s2.find(value) == s2.end()) {
-			result.insert(value);
-		}
-	}
-
-	return result;
-}
 
 /*
  * 	Checks if I is an actual instruction.

@@ -9,6 +9,8 @@
 #define SSIFY_H_
 
 #include "llvm/ADT/Statistic.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/Pass.h"
@@ -18,9 +20,8 @@
 #include "llvm/Analysis/PostDominators.h"
 #include "llvm/Analysis/DominanceFrontier.h"
 #include "llvm/Support/InstIterator.h"
-#include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/CommandLine.h"
 #include <set>
-#include <deque>
 #include <string>
 #include <algorithm>
 #include <cstdlib>
@@ -73,20 +74,20 @@ struct SSIfy: public FunctionPass {
 	void set_use(RenamingStack& stack, Instruction* inst, BasicBlock* from = 0);
 	void clean();
 
-	std::set<Instruction*> set_intersection(const std::set<Instruction*>& s1,
-			const std::set<Instruction*>& s2);
-	std::set<Instruction*> set_union(const std::set<Instruction*>& s1,
-			const std::set<Instruction*>& s2);
-	std::set<Instruction*> set_difference(const std::set<Instruction*>& s1,
-			const std::set<Instruction*>& s2);
+//	std::set<Instruction*> set_intersection(const std::set<Instruction*>& s1,
+//			const std::set<Instruction*>& s2);
+//	std::set<Instruction*> set_union(const std::set<Instruction*>& s1,
+//			const std::set<Instruction*>& s2);
+//	std::set<Instruction*> set_difference(const std::set<Instruction*>& s1,
+//			const std::set<Instruction*>& s2);
 
 	static bool is_SSIphi(const Instruction* I);
 	static bool is_SSIsigma(const Instruction* I);
 	static bool is_SSIcopy(const Instruction* I);
 	static bool is_actual(const Instruction* I);
 
-	std::set<BasicBlock*> get_iterated_df(BasicBlock* BB);
-	std::set<BasicBlock*> get_iterated_pdf(BasicBlock* BB);
+	SmallPtrSet<BasicBlock*, 4> get_iterated_df(BasicBlock* BB);
+	SmallPtrSet<BasicBlock*, 4> get_iterated_pdf(BasicBlock* BB);
 	void getAnalysisUsage(AnalysisUsage &AU) const;
 };
 
@@ -120,7 +121,7 @@ public:
  */
 class RenamingStack {
 public:
-	std::deque<Instruction*> stack;
+	SmallVector<Instruction*, 4> stack;
 	Value* V;
 
 public:

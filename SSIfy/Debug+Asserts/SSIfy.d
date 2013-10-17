@@ -7,22 +7,23 @@
  /home/vhscampos/Research/llvm/include/llvm/Support/Valgrind.h \
  /home/vhscampos/Research/llvm/include/llvm/Config/llvm-config.h \
  /home/vhscampos/Research/llvm/include/llvm/Support/Compiler.h \
+ /home/vhscampos/Research/llvm/include/llvm/ADT/SmallVector.h \
+ /home/vhscampos/Research/llvm/include/llvm/Support/AlignOf.h \
+ /home/vhscampos/Research/llvm/include/llvm/Support/MathExtras.h \
+ /home/vhscampos/Research/llvm/include/llvm/Support/SwapByteOrder.h \
+ /home/vhscampos/Research/llvm/include/llvm/Support/type_traits.h \
+ /home/vhscampos/Research/llvm/include/llvm/ADT/SmallPtrSet.h \
+ /home/vhscampos/Research/llvm/include/llvm/Support/PointerLikeTypeTraits.h \
  /home/vhscampos/Research/llvm/include/llvm/IR/Function.h \
  /home/vhscampos/Research/llvm/include/llvm/IR/Argument.h \
  /home/vhscampos/Research/llvm/include/llvm/ADT/Twine.h \
  /home/vhscampos/Research/llvm/include/llvm/ADT/StringRef.h \
- /home/vhscampos/Research/llvm/include/llvm/Support/type_traits.h \
  /home/vhscampos/Research/llvm/include/llvm/Support/ErrorHandling.h \
  /home/vhscampos/Research/llvm/include/llvm/ADT/ilist_node.h \
  /home/vhscampos/Research/llvm/include/llvm/IR/Attributes.h \
  /home/vhscampos/Research/llvm/include/llvm/ADT/ArrayRef.h \
  /home/vhscampos/Research/llvm/include/llvm/ADT/None.h \
- /home/vhscampos/Research/llvm/include/llvm/ADT/SmallVector.h \
- /home/vhscampos/Research/llvm/include/llvm/Support/AlignOf.h \
- /home/vhscampos/Research/llvm/include/llvm/Support/MathExtras.h \
- /home/vhscampos/Research/llvm/include/llvm/Support/SwapByteOrder.h \
  /home/vhscampos/Research/llvm/include/llvm/ADT/FoldingSet.h \
- /home/vhscampos/Research/llvm/include/llvm/Support/PointerLikeTypeTraits.h \
  /home/vhscampos/Research/llvm/include/llvm/IR/Value.h \
  /home/vhscampos/Research/llvm/include/llvm/IR/Use.h \
  /home/vhscampos/Research/llvm/include/llvm/ADT/PointerIntPair.h \
@@ -63,10 +64,12 @@
  /home/vhscampos/Research/llvm/include/llvm/ADT/DenseMap.h \
  /home/vhscampos/Research/llvm/include/llvm/ADT/DenseMapInfo.h \
  /home/vhscampos/Research/llvm/include/llvm/ADT/DepthFirstIterator.h \
- /home/vhscampos/Research/llvm/include/llvm/ADT/SmallPtrSet.h \
  /home/vhscampos/Research/llvm/include/llvm/Analysis/PostDominators.h \
  /home/vhscampos/Research/llvm/include/llvm/Analysis/DominanceFrontier.h \
- /home/vhscampos/Research/llvm/include/llvm/Support/InstIterator.h
+ /home/vhscampos/Research/llvm/include/llvm/Support/InstIterator.h \
+ /home/vhscampos/Research/llvm/include/llvm/Support/CommandLine.h \
+ /home/vhscampos/Research/llvm/include/llvm/ADT/StringMap.h \
+ /home/vhscampos/Research/llvm/include/llvm/Support/Allocator.h
 
 SSIfy.h:
 
@@ -82,6 +85,20 @@ SSIfy.h:
 
 /home/vhscampos/Research/llvm/include/llvm/Support/Compiler.h:
 
+/home/vhscampos/Research/llvm/include/llvm/ADT/SmallVector.h:
+
+/home/vhscampos/Research/llvm/include/llvm/Support/AlignOf.h:
+
+/home/vhscampos/Research/llvm/include/llvm/Support/MathExtras.h:
+
+/home/vhscampos/Research/llvm/include/llvm/Support/SwapByteOrder.h:
+
+/home/vhscampos/Research/llvm/include/llvm/Support/type_traits.h:
+
+/home/vhscampos/Research/llvm/include/llvm/ADT/SmallPtrSet.h:
+
+/home/vhscampos/Research/llvm/include/llvm/Support/PointerLikeTypeTraits.h:
+
 /home/vhscampos/Research/llvm/include/llvm/IR/Function.h:
 
 /home/vhscampos/Research/llvm/include/llvm/IR/Argument.h:
@@ -89,8 +106,6 @@ SSIfy.h:
 /home/vhscampos/Research/llvm/include/llvm/ADT/Twine.h:
 
 /home/vhscampos/Research/llvm/include/llvm/ADT/StringRef.h:
-
-/home/vhscampos/Research/llvm/include/llvm/Support/type_traits.h:
 
 /home/vhscampos/Research/llvm/include/llvm/Support/ErrorHandling.h:
 
@@ -102,17 +117,7 @@ SSIfy.h:
 
 /home/vhscampos/Research/llvm/include/llvm/ADT/None.h:
 
-/home/vhscampos/Research/llvm/include/llvm/ADT/SmallVector.h:
-
-/home/vhscampos/Research/llvm/include/llvm/Support/AlignOf.h:
-
-/home/vhscampos/Research/llvm/include/llvm/Support/MathExtras.h:
-
-/home/vhscampos/Research/llvm/include/llvm/Support/SwapByteOrder.h:
-
 /home/vhscampos/Research/llvm/include/llvm/ADT/FoldingSet.h:
-
-/home/vhscampos/Research/llvm/include/llvm/Support/PointerLikeTypeTraits.h:
 
 /home/vhscampos/Research/llvm/include/llvm/IR/Value.h:
 
@@ -194,10 +199,14 @@ SSIfy.h:
 
 /home/vhscampos/Research/llvm/include/llvm/ADT/DepthFirstIterator.h:
 
-/home/vhscampos/Research/llvm/include/llvm/ADT/SmallPtrSet.h:
-
 /home/vhscampos/Research/llvm/include/llvm/Analysis/PostDominators.h:
 
 /home/vhscampos/Research/llvm/include/llvm/Analysis/DominanceFrontier.h:
 
 /home/vhscampos/Research/llvm/include/llvm/Support/InstIterator.h:
+
+/home/vhscampos/Research/llvm/include/llvm/Support/CommandLine.h:
+
+/home/vhscampos/Research/llvm/include/llvm/ADT/StringMap.h:
+
+/home/vhscampos/Research/llvm/include/llvm/Support/Allocator.h:
