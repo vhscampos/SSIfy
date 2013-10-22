@@ -32,48 +32,49 @@ namespace llvm
 // Forward declarations
 class ProgramPoint;
 class RenamingStack;
+class Graph;
 struct PostDominanceFrontier;
 
 // SSIfy - The second implementation with getAnalysisUsage implemented.
 struct SSIfy: public FunctionPass
 {
-    static const std::string phiname;
-    static const std::string signame;
-    static const std::string copname;
+	static const std::string phiname;
+	static const std::string signame;
+	static const std::string copname;
 
-    static char ID; // Pass identification, replacement for typeid
-    Function* F;
-    DominatorTree* DTmap;
-    PostDominatorTree* PDTmap;
-    DominanceFrontier* DFmap;
-    PostDominanceFrontier* PDFmap;
+	static char ID; // Pass identification, replacement for typeid
+	Function* F;
+	DominatorTree* DTmap;
+	PostDominatorTree* PDTmap;
+	DominanceFrontier* DFmap;
+	PostDominanceFrontier* PDFmap;
 
-    bool flags[4];
+	bool flags[4];
 
-    // This map associates variables with the set of new variables
-    // that have been created for them
-    DenseMap<Value*, SmallPtrSet<Instruction*, 4> > versions;
+	// This map associates variables with the set of new variables
+	// that have been created for them
+	DenseMap<Value*, SmallPtrSet<Instruction*, 4> > versions;
 
-    SSIfy() :
-            FunctionPass(ID)
-    {
-        F = 0;
-        DTmap = 0;
-        PDTmap = 0;
-        DFmap = 0;
-        PDFmap = 0;
-        memset(flags, 0, 4 * sizeof(bool));
-    }
+	SSIfy() :
+			FunctionPass(ID)
+	{
+		F = 0;
+		DTmap = 0;
+		PDTmap = 0;
+		DFmap = 0;
+		PDFmap = 0;
+		memset(flags, 0, 4 * sizeof(bool));
+	}
 
-    virtual bool runOnFunction(Function &F);
-    void dragon(Instruction* V);
-    void split(Instruction* V, std::set<ProgramPoint> Iup,
-            std::set<ProgramPoint> Idown);
-    void rename_initial(Instruction* V);
-    void rename(BasicBlock* BB, RenamingStack& stack);
-    void set_def(RenamingStack& stack, Instruction* inst);
-    void set_use(RenamingStack& stack, Instruction* inst, BasicBlock* from = 0);
-    void clean();
+	virtual bool runOnFunction(Function &F);
+	void dragon(Instruction* V);
+	void split(Instruction* V, std::set<ProgramPoint> Iup,
+			std::set<ProgramPoint> Idown);
+	void rename_initial(Instruction* V);
+	void rename(BasicBlock* BB, RenamingStack& stack);
+	void set_def(RenamingStack& stack, Instruction* inst);
+	void set_use(RenamingStack& stack, Instruction* inst, BasicBlock* from = 0);
+	void clean();
 
 //	std::set<Instruction*> set_intersection(const std::set<Instruction*>& s1,
 //			const std::set<Instruction*>& s2);
@@ -82,41 +83,44 @@ struct SSIfy: public FunctionPass
 //	std::set<Instruction*> set_difference(const std::set<Instruction*>& s1,
 //			const std::set<Instruction*>& s2);
 
-    static bool is_SSIphi(const Instruction* I);
-    static bool is_SSIsigma(const Instruction* I);
-    static bool is_SSIcopy(const Instruction* I);
-    static bool is_actual(const Instruction* I);
+	static bool is_SSIphi(const Instruction* I);
+	static bool is_SSIsigma(const Instruction* I);
+	static bool is_SSIcopy(const Instruction* I);
+	static bool is_actual(const Instruction* I);
 
-    SmallPtrSet<BasicBlock*, 4> get_iterated_df(BasicBlock* BB);
-    SmallPtrSet<BasicBlock*, 4> get_iterated_pdf(BasicBlock* BB);
-    SmallVector<Instruction*, 8> get_topsort_versions();
-    void getAnalysisUsage(AnalysisUsage &AU) const;
+	SmallPtrSet<BasicBlock*, 4> get_iterated_df(BasicBlock* BB);
+	SmallPtrSet<BasicBlock*, 4> get_iterated_pdf(BasicBlock* BB);
+	SmallVector<Instruction*, 8> get_topsort_versions(
+			const SmallPtrSet<Instruction*, 16>& to_be_erased);
+	void visit(Graph& g, SmallPtrSet<Value*, 8>& unmarked_nodes,
+			SmallVectorImpl<Instruction*>& list, Value* V);
+	void getAnalysisUsage(AnalysisUsage &AU) const;
 };
 
 class ProgramPoint
 {
 public:
-    typedef enum
-    {
-        In, Self, Out
-    } Position;
+	typedef enum
+	{
+		In, Self, Out
+	} Position;
 
 public:
-    explicit ProgramPoint(Instruction* I, Position P);
+	explicit ProgramPoint(Instruction* I, Position P);
 
-    bool not_definition_of(const Value* V) const;
+	bool not_definition_of(const Value* V) const;
 
-    bool operator==(const ProgramPoint& o) const;
-    bool operator!=(const ProgramPoint& o) const;
-    bool operator<(const ProgramPoint& o) const;
-    bool operator>(const ProgramPoint& o) const;
+	bool operator==(const ProgramPoint& o) const;
+	bool operator!=(const ProgramPoint& o) const;
+	bool operator<(const ProgramPoint& o) const;
+	bool operator>(const ProgramPoint& o) const;
 
-    inline bool is_join() const;
-    inline bool is_branch() const;
-    inline bool is_copy() const;
+	inline bool is_join() const;
+	inline bool is_branch() const;
+	inline bool is_copy() const;
 
-    Instruction* I;
-    Position P;
+	Instruction* I;
+	Position P;
 };
 
 /*
@@ -126,51 +130,55 @@ public:
 class RenamingStack
 {
 public:
-    SmallVector<Instruction*, 4> stack;
-    Value* V;
+	SmallVector<Instruction*, 4> stack;
+	Value* V;
 
 public:
-    RenamingStack(Value* V);
-    inline Value* getValue() const;
-    inline void push(Instruction* I);
-    inline void pop();
-    inline Instruction* peek();
-    inline bool empty() const;
+	RenamingStack(Value* V);
+	inline Value* getValue() const;
+	inline void push(Instruction* I);
+	inline void pop();
+	inline Instruction* peek();
+	inline bool empty() const;
 };
 
-class GraphNode
-{
-public:
-    const Value* V;
-    SmallPtrSet<const GraphNode*, 4> adjacency_list;
+/*
+ class GraphNode
+ {
+ public:
+ const Value* V;
+ SmallPtrSet<const GraphNode*, 4> adjacency_list;
 
-    GraphNode(const Value* V)
-    {
-        this->V = V;
-    }
+ GraphNode(const Value* V)
+ {
+ this->V = V;
+ }
 
-    void addEdge(const GraphNode& to);
-    bool hasEdge(const GraphNode& to) const;
+ void addEdge(const GraphNode& to);
+ bool hasEdge(const GraphNode& to) const;
 
-    bool operator<(const GraphNode& o) const
-    {
-        return this->V < o.V;
-    }
+ bool operator<(const GraphNode& o) const
+ {
+ return this->V < o.V;
+ }
 
-    bool operator==(const GraphNode& o) const
-    {
-        return this->V == o.V;
-    }
-};
+ bool operator==(const GraphNode& o) const
+ {
+ return this->V == o.V;
+ }
+ };
+ */
 
 class Graph
 {
 public:
-    std::set<GraphNode*> vertices;
+	// Map from Values to adjacency lists
+	DenseMap<Value*, SmallPtrSet<Value*, 4> > vertices;
 
-    GraphNode* addNode(Value* V);
-    void addEdge(GraphNode& from, const GraphNode& to) const;
-    bool hasEdge(const GraphNode& from, const GraphNode& to) const;
+	void addNode(Value* V);
+	bool hasNode(Value* V);
+	void addEdge(Value* from, Value* to);
+	bool hasEdge(Value* from, Value* to);
 };
 
 /// PostDominanceFrontier Class - Concrete subclass of DominanceFrontier that is
@@ -178,172 +186,172 @@ public:
 ///
 struct PostDominanceFrontier
 {
-    static char ID;
+	static char ID;
 public:
-    typedef std::set<BasicBlock*> DomSetType; // Dom set for a bb
-    typedef std::map<BasicBlock*, DomSetType> DomSetMapType; // Dom set map
+	typedef std::set<BasicBlock*> DomSetType; // Dom set for a bb
+	typedef std::map<BasicBlock*, DomSetType> DomSetMapType; // Dom set map
 
-    DomSetMapType Frontiers;
-    std::vector<BasicBlock*> Roots;
-    const bool IsPostDominators;
+	DomSetMapType Frontiers;
+	std::vector<BasicBlock*> Roots;
+	const bool IsPostDominators;
 
-    PostDominanceFrontier(PostDominatorTree* DTmap) :
-            IsPostDominators(true)
-    {
-        calculate_frontiers(DTmap);
-    }
+	PostDominanceFrontier(PostDominatorTree* DTmap) :
+			IsPostDominators(true)
+	{
+		calculate_frontiers(DTmap);
+	}
 
-    virtual ~PostDominanceFrontier()
-    {
-        releaseMemory();
-    }
+	virtual ~PostDominanceFrontier()
+	{
+		releaseMemory();
+	}
 
-    /// getRoots - Return the root blocks of the current CFG.  This may include
-    /// multiple blocks if we are computing post dominators.  For forward
-    /// dominators, this will always be a single block (the entry node).
-    ///
-    inline const std::vector<BasicBlock*> &getRoots() const
-    {
-        return Roots;
-    }
+	/// getRoots - Return the root blocks of the current CFG.  This may include
+	/// multiple blocks if we are computing post dominators.  For forward
+	/// dominators, this will always be a single block (the entry node).
+	///
+	inline const std::vector<BasicBlock*> &getRoots() const
+	{
+		return Roots;
+	}
 
-    /// isPostDominator - Returns true if analysis based of postdoms
-    ///
-    bool isPostDominator() const
-    {
-        return IsPostDominators;
-    }
+	/// isPostDominator - Returns true if analysis based of postdoms
+	///
+	bool isPostDominator() const
+	{
+		return IsPostDominators;
+	}
 
-    virtual void releaseMemory()
-    {
-        Frontiers.clear();
-    }
+	virtual void releaseMemory()
+	{
+		Frontiers.clear();
+	}
 
-    // Accessor interface:
-    typedef DomSetMapType::iterator iterator;
-    typedef DomSetMapType::const_iterator const_iterator;
-    iterator begin()
-    {
-        return Frontiers.begin();
-    }
-    const_iterator begin() const
-    {
-        return Frontiers.begin();
-    }
-    iterator end()
-    {
-        return Frontiers.end();
-    }
-    const_iterator end() const
-    {
-        return Frontiers.end();
-    }
-    iterator find(BasicBlock *B)
-    {
-        return Frontiers.find(B);
-    }
-    const_iterator find(BasicBlock *B) const
-    {
-        return Frontiers.find(B);
-    }
+	// Accessor interface:
+	typedef DomSetMapType::iterator iterator;
+	typedef DomSetMapType::const_iterator const_iterator;
+	iterator begin()
+	{
+		return Frontiers.begin();
+	}
+	const_iterator begin() const
+	{
+		return Frontiers.begin();
+	}
+	iterator end()
+	{
+		return Frontiers.end();
+	}
+	const_iterator end() const
+	{
+		return Frontiers.end();
+	}
+	iterator find(BasicBlock *B)
+	{
+		return Frontiers.find(B);
+	}
+	const_iterator find(BasicBlock *B) const
+	{
+		return Frontiers.find(B);
+	}
 
-    iterator addBasicBlock(BasicBlock *BB, const DomSetType &frontier)
-    {
-        assert(find(BB) == end() && "Block already in DominanceFrontier!");
-        return Frontiers.insert(std::make_pair(BB, frontier)).first;
-    }
+	iterator addBasicBlock(BasicBlock *BB, const DomSetType &frontier)
+	{
+		assert(find(BB) == end() && "Block already in DominanceFrontier!");
+		return Frontiers.insert(std::make_pair(BB, frontier)).first;
+	}
 
-    /// removeBlock - Remove basic block BB's frontier.
-    void removeBlock(BasicBlock *BB)
-    {
-        assert(find(BB) != end() && "Block is not in DominanceFrontier!");
-        for (iterator I = begin(), E = end(); I != E; ++I)
-            I->second.erase(BB);
-        Frontiers.erase(BB);
-    }
+	/// removeBlock - Remove basic block BB's frontier.
+	void removeBlock(BasicBlock *BB)
+	{
+		assert(find(BB) != end() && "Block is not in DominanceFrontier!");
+		for (iterator I = begin(), E = end(); I != E; ++I)
+			I->second.erase(BB);
+		Frontiers.erase(BB);
+	}
 
-    void addToFrontier(iterator I, BasicBlock *Node)
-    {
-        assert(I != end() && "BB is not in DominanceFrontier!");
-        I->second.insert(Node);
-    }
+	void addToFrontier(iterator I, BasicBlock *Node)
+	{
+		assert(I != end() && "BB is not in DominanceFrontier!");
+		I->second.insert(Node);
+	}
 
-    void removeFromFrontier(iterator I, BasicBlock *Node)
-    {
-        assert(I != end() && "BB is not in DominanceFrontier!");
-        assert(
-                I->second.count(Node)
-                        && "Node is not in DominanceFrontier of BB");
-        I->second.erase(Node);
-    }
+	void removeFromFrontier(iterator I, BasicBlock *Node)
+	{
+		assert(I != end() && "BB is not in DominanceFrontier!");
+		assert(
+				I->second.count(Node)
+						&& "Node is not in DominanceFrontier of BB");
+		I->second.erase(Node);
+	}
 
-    /// compareDomSet - Return false if two domsets match. Otherwise
-    /// return true;
-    bool compareDomSet(DomSetType &DS1, const DomSetType &DS2) const
-    {
-        std::set<BasicBlock *> tmpSet;
-        for (DomSetType::const_iterator I = DS2.begin(), E = DS2.end(); I != E;
-                ++I)
-            tmpSet.insert(*I);
+	/// compareDomSet - Return false if two domsets match. Otherwise
+	/// return true;
+	bool compareDomSet(DomSetType &DS1, const DomSetType &DS2) const
+	{
+		std::set<BasicBlock *> tmpSet;
+		for (DomSetType::const_iterator I = DS2.begin(), E = DS2.end(); I != E;
+				++I)
+			tmpSet.insert(*I);
 
-        for (DomSetType::const_iterator I = DS1.begin(), E = DS1.end(); I != E;
-                ) {
-            BasicBlock *Node = *I++;
+		for (DomSetType::const_iterator I = DS1.begin(), E = DS1.end(); I != E;
+				) {
+			BasicBlock *Node = *I++;
 
-            if (tmpSet.erase(Node) == 0)
-                // Node is in DS1 but not in DS2.
-                return true;
-        }
+			if (tmpSet.erase(Node) == 0)
+				// Node is in DS1 but not in DS2.
+				return true;
+		}
 
-        if (!tmpSet.empty())
-            // There are nodes that are in DS2 but not in DS1.
-            return true;
+		if (!tmpSet.empty())
+			// There are nodes that are in DS2 but not in DS1.
+			return true;
 
-        // DS1 and DS2 matches.
-        return false;
-    }
+		// DS1 and DS2 matches.
+		return false;
+	}
 
-    /// compare - Return true if the other dominance frontier base matches
-    /// this dominance frontier base. Otherwise return false.
-    bool compare(DominanceFrontierBase &Other) const
-    {
-        DomSetMapType tmpFrontiers;
-        for (DomSetMapType::const_iterator I = Other.begin(), E = Other.end();
-                I != E; ++I)
-            tmpFrontiers.insert(std::make_pair(I->first, I->second));
+	/// compare - Return true if the other dominance frontier base matches
+	/// this dominance frontier base. Otherwise return false.
+	bool compare(DominanceFrontierBase &Other) const
+	{
+		DomSetMapType tmpFrontiers;
+		for (DomSetMapType::const_iterator I = Other.begin(), E = Other.end();
+				I != E; ++I)
+			tmpFrontiers.insert(std::make_pair(I->first, I->second));
 
-        for (DomSetMapType::iterator I = tmpFrontiers.begin(), E =
-                tmpFrontiers.end(); I != E;) {
-            BasicBlock *Node = I->first;
-            const_iterator DFI = find(Node);
-            if (DFI == end())
-                return true;
+		for (DomSetMapType::iterator I = tmpFrontiers.begin(), E =
+				tmpFrontiers.end(); I != E;) {
+			BasicBlock *Node = I->first;
+			const_iterator DFI = find(Node);
+			if (DFI == end())
+				return true;
 
-            if (compareDomSet(I->second, DFI->second))
-                return true;
+			if (compareDomSet(I->second, DFI->second))
+				return true;
 
-            ++I;
-            tmpFrontiers.erase(Node);
-        }
+			++I;
+			tmpFrontiers.erase(Node);
+		}
 
-        if (!tmpFrontiers.empty())
-            return true;
+		if (!tmpFrontiers.empty())
+			return true;
 
-        return false;
-    }
+		return false;
+	}
 
-    bool calculate_frontiers(PostDominatorTree* DTmap)
-    {
-        Frontiers.clear();
-        Roots = DTmap->getRoots();
-        if (const DomTreeNode *Root = DTmap->getRootNode())
-            calculate(*DTmap, Root);
-        return false;
-    }
+	bool calculate_frontiers(PostDominatorTree* DTmap)
+	{
+		Frontiers.clear();
+		Roots = DTmap->getRoots();
+		if (const DomTreeNode *Root = DTmap->getRootNode())
+			calculate(*DTmap, Root);
+		return false;
+	}
 
 private:
-    const DomSetType &calculate(const PostDominatorTree &DT,
-            const DomTreeNode *Node);
+	const DomSetType &calculate(const PostDominatorTree &DT,
+			const DomTreeNode *Node);
 };
 
 }

@@ -23,46 +23,46 @@ const std::string SSIfy::copname = "SSI_copy";
  */
 static cl::opt<bool> Verbose("v", cl::desc("Print details"));
 static cl::opt<std::string> ProgramPointOptions("set",
-        cl::desc("Starting program points"), cl::Required);
+		cl::desc("Starting program points"), cl::Required);
 
 bool SSIfy::runOnFunction(Function &F)
 {
-    this->F = &F;
-    this->DTmap = &getAnalysis<DominatorTree>();
-    this->PDTmap = &getAnalysis<PostDominatorTree>();
-    this->DFmap = &getAnalysis<DominanceFrontier>();
-    this->PDFmap = new PostDominanceFrontier(this->PDTmap);
+	this->F = &F;
+	this->DTmap = &getAnalysis<DominatorTree>();
+	this->PDTmap = &getAnalysis<PostDominatorTree>();
+	this->DFmap = &getAnalysis<DominanceFrontier>();
+	this->PDFmap = new PostDominanceFrontier(this->PDTmap);
 
-    const std::string flags_str = std::string(ProgramPointOptions.c_str());
-    for (int i = 0; i < 4; ++i) {
-        this->flags[i] = flags_str[i] == '1';
-    }
+	const std::string flags_str = std::string(ProgramPointOptions.c_str());
+	for (int i = 0; i < 4; ++i) {
+		this->flags[i] = flags_str[i] == '1';
+	}
 
-    if (Verbose) {
-        errs() << "Running on function " << F.getName() << "\n";
-    }
+	if (Verbose) {
+		errs() << "Running on function " << F.getName() << "\n";
+	}
 
-    // For every instruction in this function, call the SSIfy function
-    Function::iterator Fit, Fend;
+	// For every instruction in this function, call the SSIfy function
+	Function::iterator Fit, Fend;
 
-    for (Fit = F.begin(), Fend = F.end(); Fit != Fend; ++Fit) {
-        BasicBlock& BB = *Fit;
+	for (Fit = F.begin(), Fend = F.end(); Fit != Fend; ++Fit) {
+		BasicBlock& BB = *Fit;
 
-        BasicBlock::iterator BBit, BBend;
-        for (BBit = BB.begin(), BBend = BB.end(); BBit != BBend; ++BBit) {
-            Instruction& I = *BBit;
+		BasicBlock::iterator BBit, BBend;
+		for (BBit = BB.begin(), BBend = BB.end(); BBit != BBend; ++BBit) {
+			Instruction& I = *BBit;
 
-            dragon(&I);
-        }
-    }
+			dragon(&I);
+		}
+	}
 
-    clean();
+	clean();
 
-    delete this->PDFmap;
+	delete this->PDFmap;
 
-    this->versions.clear();
+	this->versions.clear();
 
-    return true;
+	return true;
 }
 
 /*
@@ -74,61 +74,61 @@ bool SSIfy::runOnFunction(Function &F)
  */
 void SSIfy::dragon(Instruction* V)
 {
-    std::set<ProgramPoint> Iup;
-    std::set<ProgramPoint> Idown;
+	std::set<ProgramPoint> Iup;
+	std::set<ProgramPoint> Idown;
 
-    // %condition = icmp i32 slt %V 0
-    // br i1 %condition BB1 BB2
-    // This example above explains this code section below
-    // We have to check if a use of a use of V is a branch instruction to assess whether
-    // it is a program point of Out(Conds) or not
-    for (Value::use_iterator i = V->use_begin(), e = V->use_end(); i != e;
-            ++i) {
-        Instruction* use_inst = dyn_cast<Instruction>(*i);
+	// %condition = icmp i32 slt %V 0
+	// br i1 %condition BB1 BB2
+	// This example above explains this code section below
+	// We have to check if a use of a use of V is a branch instruction to assess whether
+	// it is a program point of Out(Conds) or not
+	for (Value::use_iterator i = V->use_begin(), e = V->use_end(); i != e;
+			++i) {
+		Instruction* use_inst = dyn_cast<Instruction>(*i);
 
-        // Out(Conds)
-        if (CmpInst* possible_cmp = dyn_cast<CmpInst>(use_inst)) {
-            for (Value::use_iterator ii = possible_cmp->use_begin(), ee =
-                    possible_cmp->use_end(); ii != ee; ++ii) {
-                if (BranchInst* br_inst = dyn_cast<BranchInst>(*ii)) {
-                    // (downwards)
-                    if (flags[0]) {
-                        Idown.insert(ProgramPoint(br_inst, ProgramPoint::Out));
-                    }
+		// Out(Conds)
+		if (CmpInst* possible_cmp = dyn_cast<CmpInst>(use_inst)) {
+			for (Value::use_iterator ii = possible_cmp->use_begin(), ee =
+					possible_cmp->use_end(); ii != ee; ++ii) {
+				if (BranchInst* br_inst = dyn_cast<BranchInst>(*ii)) {
+					// (downwards)
+					if (flags[0]) {
+						Idown.insert(ProgramPoint(br_inst, ProgramPoint::Out));
+					}
 
-                    // (upwards)
-                    if (flags[1]) {
-                        Iup.insert(ProgramPoint(br_inst, ProgramPoint::Out));
-                    }
-                }
-            }
-        }
-        // Uses
-        //
-        // EXCEPTIONS
-        //  - TerminatorInst
-        //  - PHINode
-        //
-        // These are exceptions because a copy created for them would
-        // break the program, or not make sense.
-        //
-        else if (V->getType()->isIntegerTy()) {
-            if (!isa<TerminatorInst>(use_inst) && !isa<PHINode>(use_inst)) {
-                // Uses (downwards)	FIXME: only with integer variables
-                if (flags[2]) {
-                    Idown.insert(ProgramPoint(use_inst, ProgramPoint::Self));
-                }
+					// (upwards)
+					if (flags[1]) {
+						Iup.insert(ProgramPoint(br_inst, ProgramPoint::Out));
+					}
+				}
+			}
+		}
+		// Uses
+		//
+		// EXCEPTIONS
+		//  - TerminatorInst
+		//  - PHINode
+		//
+		// These are exceptions because a copy created for them would
+		// break the program, or not make sense.
+		//
+		else if (V->getType()->isIntegerTy()) {
+			if (!isa<TerminatorInst>(use_inst) && !isa<PHINode>(use_inst)) {
+				// Uses (downwards)	FIXME: only with integer variables
+				if (flags[2]) {
+					Idown.insert(ProgramPoint(use_inst, ProgramPoint::Self));
+				}
 
-                // Uses (upwards)	FIXME: only with integer variables
-                if (flags[3]) {
-                    Iup.insert(ProgramPoint(use_inst, ProgramPoint::Self));
-                }
-            }
-        }
-    }
+				// Uses (upwards)	FIXME: only with integer variables
+				if (flags[3]) {
+					Iup.insert(ProgramPoint(use_inst, ProgramPoint::Self));
+				}
+			}
+		}
+	}
 
-    split(V, Iup, Idown);
-    rename_initial(V);
+	split(V, Iup, Idown);
+	rename_initial(V);
 //	clean(V);
 }
 
@@ -137,94 +137,94 @@ void SSIfy::dragon(Instruction* V)
  * 	defined as input.
  */
 void SSIfy::split(Instruction* V, std::set<ProgramPoint> Iup,
-        std::set<ProgramPoint> Idown)
+		std::set<ProgramPoint> Idown)
 {
-    std::set<ProgramPoint> Sup;
-    std::set<ProgramPoint> Sdown;
+	std::set<ProgramPoint> Sup;
+	std::set<ProgramPoint> Sdown;
 
-    if (Verbose) {
-        errs() << "Splitting " << V->getName() << "\n";
-    }
+	if (Verbose) {
+		errs() << "Splitting " << V->getName() << "\n";
+	}
 
-    // Creation of the Sup set. Its logic is defined in the referenced paper.
-    for (std::set<ProgramPoint>::iterator sit = Iup.begin(), send = Iup.end();
-            sit != send; ++sit) {
-        ProgramPoint point = *sit;
-        Instruction* I = point.I;
-        BasicBlock* BBparent = I->getParent();
+	// Creation of the Sup set. Its logic is defined in the referenced paper.
+	for (std::set<ProgramPoint>::iterator sit = Iup.begin(), send = Iup.end();
+			sit != send; ++sit) {
+		ProgramPoint point = *sit;
+		Instruction* I = point.I;
+		BasicBlock* BBparent = I->getParent();
 
-        if (point.is_join()) {
-            for (pred_iterator PI = pred_begin(BBparent), E = pred_end(
-                    BBparent); PI != E; ++PI) {
-                BasicBlock *BBpred = *PI;
+		if (point.is_join()) {
+			for (pred_iterator PI = pred_begin(BBparent), E = pred_end(
+					BBparent); PI != E; ++PI) {
+				BasicBlock *BBpred = *PI;
 
-                SmallPtrSet<BasicBlock*, 4> iterated_pdf = get_iterated_pdf(
-                        BBpred);
+				SmallPtrSet<BasicBlock*, 4> iterated_pdf = get_iterated_pdf(
+						BBpred);
 
-                for (SmallPtrSet<BasicBlock*, 4>::iterator sit =
-                        iterated_pdf.begin(), send = iterated_pdf.end();
-                        sit != send; ++sit) {
-                    BasicBlock* BB = *sit;
-                    Instruction& last = BB->back();
-                    Sup.insert(ProgramPoint(&last, ProgramPoint::Out));
-                }
-            }
-        }
-        else {
-            SmallPtrSet<BasicBlock*, 4> iterated_pdf = get_iterated_pdf(
-                    BBparent);
+				for (SmallPtrSet<BasicBlock*, 4>::iterator sit =
+						iterated_pdf.begin(), send = iterated_pdf.end();
+						sit != send; ++sit) {
+					BasicBlock* BB = *sit;
+					Instruction& last = BB->back();
+					Sup.insert(ProgramPoint(&last, ProgramPoint::Out));
+				}
+			}
+		}
+		else {
+			SmallPtrSet<BasicBlock*, 4> iterated_pdf = get_iterated_pdf(
+					BBparent);
 
-            for (SmallPtrSet<BasicBlock*, 4>::iterator sit =
-                    iterated_pdf.begin(), send = iterated_pdf.end();
-                    sit != send; ++sit) {
-                BasicBlock* BB = *sit;
-                Instruction& last = BB->back();
-                Sup.insert(ProgramPoint(&last, ProgramPoint::Out));
-            }
-        }
-    }
+			for (SmallPtrSet<BasicBlock*, 4>::iterator sit =
+					iterated_pdf.begin(), send = iterated_pdf.end();
+					sit != send; ++sit) {
+				BasicBlock* BB = *sit;
+				Instruction& last = BB->back();
+				Sup.insert(ProgramPoint(&last, ProgramPoint::Out));
+			}
+		}
+	}
 
-    // Union of Sup, Idown and V
-    std::set<ProgramPoint> NewSet;
-    NewSet.insert(Sup.begin(), Sup.end());
-    NewSet.insert(Idown.begin(), Idown.end());
+	// Union of Sup, Idown and V
+	std::set<ProgramPoint> NewSet;
+	NewSet.insert(Sup.begin(), Sup.end());
+	NewSet.insert(Idown.begin(), Idown.end());
 
-    // Creation of Sdown. Logic defined in the paper as well.
-    for (std::set<ProgramPoint>::iterator sit = NewSet.begin(), send =
-            NewSet.end(); sit != send; ++sit) {
-        ProgramPoint point = *sit;
-        Instruction* I = point.I;
-        BasicBlock* BBparent = I->getParent();
+	// Creation of Sdown. Logic defined in the paper as well.
+	for (std::set<ProgramPoint>::iterator sit = NewSet.begin(), send =
+			NewSet.end(); sit != send; ++sit) {
+		ProgramPoint point = *sit;
+		Instruction* I = point.I;
+		BasicBlock* BBparent = I->getParent();
 
-        if (point.is_branch()) {
-            for (succ_iterator PI = succ_begin(BBparent), E = succ_end(
-                    BBparent); PI != E; ++PI) {
-                BasicBlock *BBsucc = *PI;
+		if (point.is_branch()) {
+			for (succ_iterator PI = succ_begin(BBparent), E = succ_end(
+					BBparent); PI != E; ++PI) {
+				BasicBlock *BBsucc = *PI;
 
-                SmallPtrSet<BasicBlock*, 4> iterated_df = get_iterated_df(
-                        BBsucc);
+				SmallPtrSet<BasicBlock*, 4> iterated_df = get_iterated_df(
+						BBsucc);
 
-                for (SmallPtrSet<BasicBlock*, 4>::iterator sit =
-                        iterated_df.begin(), send = iterated_df.end();
-                        sit != send; ++sit) {
-                    BasicBlock* BB = *sit;
-                    Instruction& first = BB->front();
-                    Sdown.insert(ProgramPoint(&first, ProgramPoint::In));
-                }
-            }
-        }
-        else {
-            SmallPtrSet<BasicBlock*, 4> iterated_df = get_iterated_df(BBparent);
+				for (SmallPtrSet<BasicBlock*, 4>::iterator sit =
+						iterated_df.begin(), send = iterated_df.end();
+						sit != send; ++sit) {
+					BasicBlock* BB = *sit;
+					Instruction& first = BB->front();
+					Sdown.insert(ProgramPoint(&first, ProgramPoint::In));
+				}
+			}
+		}
+		else {
+			SmallPtrSet<BasicBlock*, 4> iterated_df = get_iterated_df(BBparent);
 
-            for (SmallPtrSet<BasicBlock*, 4>::iterator sit =
-                    iterated_df.begin(), send = iterated_df.end(); sit != send;
-                    ++sit) {
-                BasicBlock* BB = *sit;
-                Instruction& first = BB->front();
-                Sdown.insert(ProgramPoint(&first, ProgramPoint::In));
-            }
-        }
-    }
+			for (SmallPtrSet<BasicBlock*, 4>::iterator sit =
+					iterated_df.begin(), send = iterated_df.end(); sit != send;
+					++sit) {
+				BasicBlock* BB = *sit;
+				Instruction& first = BB->front();
+				Sdown.insert(ProgramPoint(&first, ProgramPoint::In));
+			}
+		}
+	}
 
 //	for (std::set<ProgramPoint>::iterator sit = Sdown.begin(), send =
 //			Sdown.end(); sit != send; ++sit) {
@@ -232,116 +232,116 @@ void SSIfy::split(Instruction* V, std::set<ProgramPoint> Iup,
 //	}
 //	errs() << "\n";
 
-    // Finally
-    std::set<ProgramPoint> S;
-    S.insert(Iup.begin(), Iup.end());
-    S.insert(Idown.begin(), Idown.end());
-    S.insert(Sup.begin(), Sup.end());
-    S.insert(Sdown.begin(), Sdown.end());
+	// Finally
+	std::set<ProgramPoint> S;
+	S.insert(Iup.begin(), Iup.end());
+	S.insert(Idown.begin(), Idown.end());
+	S.insert(Sup.begin(), Sup.end());
+	S.insert(Sdown.begin(), Sdown.end());
 
 //	for (std::set<ProgramPoint>::iterator sit = S.begin(), send = S.end();
 //			sit != send; ++sit) {
 //		errs() << (*sit).I->getName() << " " << (*sit).P << "\n";
 //	}
 
-    /*
-     * 	Split live range of v by inserting sigma, phi, and copies
-     */
-    for (std::set<ProgramPoint>::iterator sit = S.begin(), send = S.end();
-            sit != send; ++sit) {
-        ProgramPoint point = *sit;
+	/*
+	 * 	Split live range of v by inserting sigma, phi, and copies
+	 */
+	for (std::set<ProgramPoint>::iterator sit = S.begin(), send = S.end();
+			sit != send; ++sit) {
+		ProgramPoint point = *sit;
 
-        if (point.not_definition_of(V)) {
-            Instruction* insertion_point = point.I;
-            ProgramPoint::Position relative_position = point.P;
+		if (point.not_definition_of(V)) {
+			Instruction* insertion_point = point.I;
+			ProgramPoint::Position relative_position = point.P;
 
-            if (point.is_join()) {
-                // phi
-                unsigned numReservedValues = std::distance(
-                        pred_begin(insertion_point->getParent()),
-                        pred_end(insertion_point->getParent()));
-                PHINode* new_phi = PHINode::Create(V->getType(),
-                        numReservedValues, phiname);
+			if (point.is_join()) {
+				// phi
+				unsigned numReservedValues = std::distance(
+						pred_begin(insertion_point->getParent()),
+						pred_end(insertion_point->getParent()));
+				PHINode* new_phi = PHINode::Create(V->getType(),
+						numReservedValues, phiname);
 
-                // Add V multiple times as incoming value to the new phi
-                for (pred_iterator BBit = pred_begin(
-                        insertion_point->getParent()), BBend = pred_end(
-                        insertion_point->getParent()); BBit != BBend; ++BBit) {
-                    BasicBlock* predBB = *BBit;
-                    new_phi->addIncoming(V, predBB);
-                }
+				// Add V multiple times as incoming value to the new phi
+				for (pred_iterator BBit = pred_begin(
+						insertion_point->getParent()), BBend = pred_end(
+						insertion_point->getParent()); BBit != BBend; ++BBit) {
+					BasicBlock* predBB = *BBit;
+					new_phi->addIncoming(V, predBB);
+				}
 
-                switch (relative_position)
-                {
-                    case ProgramPoint::In:
-                        new_phi->insertBefore(insertion_point);
-                        break;
-                    default:
-                        errs() << "Problem here";
-                        break;
-                }
+				switch (relative_position)
+				{
+					case ProgramPoint::In:
+						new_phi->insertBefore(insertion_point);
+						break;
+					default:
+						errs() << "Problem here";
+						break;
+				}
 
-                if (Verbose) {
-                    errs() << "Created " << new_phi->getName() << "\n";
-                }
+				if (Verbose) {
+					errs() << "Created " << new_phi->getName() << "\n";
+				}
 
-                this->versions[V].insert(new_phi);
-            }
-            else if (point.is_branch()) {
-                // sigma
-                // Insert one sigma in each of the successors
-                BasicBlock* BBparent = point.I->getParent();
-                unsigned numReservedValues = 1;
+				this->versions[V].insert(new_phi);
+			}
+			else if (point.is_branch()) {
+				// sigma
+				// Insert one sigma in each of the successors
+				BasicBlock* BBparent = point.I->getParent();
+				unsigned numReservedValues = 1;
 
-                for (succ_iterator PI = succ_begin(BBparent), E = succ_end(
-                        BBparent); PI != E; ++PI) {
-                    BasicBlock *BBsucc = *PI;
+				for (succ_iterator PI = succ_begin(BBparent), E = succ_end(
+						BBparent); PI != E; ++PI) {
+					BasicBlock *BBsucc = *PI;
 
-                    PHINode* new_sigma = PHINode::Create(V->getType(),
-                            numReservedValues, signame, &BBsucc->front());
-                    new_sigma->addIncoming(V, BBparent);
+					PHINode* new_sigma = PHINode::Create(V->getType(),
+							numReservedValues, signame, &BBsucc->front());
+					new_sigma->addIncoming(V, BBparent);
 
-                    if (Verbose) {
-                        errs() << "Created " << new_sigma->getName() << "\n";
-                    }
+					if (Verbose) {
+						errs() << "Created " << new_sigma->getName() << "\n";
+					}
 
-                    this->versions[V].insert(new_sigma);
-                }
-            }
-            else {
-                // copy
-                // FIXME: TEMPORARY SOLUTION!!!
-                // If the program point is in fact an SSI_copy
-                // we ignore it. Check with Fernando.
-                if (is_SSIcopy(point.I)) {
-                    continue;
-                }
+					this->versions[V].insert(new_sigma);
+				}
+			}
+			else {
+				// copy
+				// FIXME: TEMPORARY SOLUTION!!!
+				// If the program point is in fact an SSI_copy
+				// we ignore it. Check with Fernando.
+				if (is_SSIcopy(point.I)) {
+					continue;
+				}
 
-                // Zero value
-                ConstantInt* zero = ConstantInt::get(
-                        cast<IntegerType>(V->getType()), 0);
+				// Zero value
+				ConstantInt* zero = ConstantInt::get(
+						cast<IntegerType>(V->getType()), 0);
 
-                BinaryOperator* new_copy = BinaryOperator::Create(
-                        Instruction::Add, V, zero, copname);
+				BinaryOperator* new_copy = BinaryOperator::Create(
+						Instruction::Add, V, zero, copname);
 
-                switch (relative_position)
-                {
-                    case ProgramPoint::Self:
-                        new_copy->insertAfter(insertion_point);
-                        break;
-                    default:
-                        errs() << "Problem here";
-                        break;
-                }
+				switch (relative_position)
+				{
+					case ProgramPoint::Self:
+						new_copy->insertAfter(insertion_point);
+						break;
+					default:
+						errs() << "Problem here";
+						break;
+				}
 
-                if (Verbose) {
-                    errs() << "Created " << new_copy->getName() << "\n";
-                }
+				if (Verbose) {
+					errs() << "Created " << new_copy->getName() << "\n";
+				}
 
-                this->versions[V].insert(new_copy);
-            }
-        }
-    }
+				this->versions[V].insert(new_copy);
+			}
+		}
+	}
 }
 
 /*
@@ -350,11 +350,11 @@ void SSIfy::split(Instruction* V, std::set<ProgramPoint> Iup,
  */
 void SSIfy::rename_initial(Instruction* V)
 {
-    RenamingStack stack(V);
+	RenamingStack stack(V);
 
-    BasicBlock* root = V->getParent();
+	BasicBlock* root = V->getParent();
 
-    rename(root, stack);
+	rename(root, stack);
 }
 
 /*
@@ -364,79 +364,79 @@ void SSIfy::rename_initial(Instruction* V)
  */
 void SSIfy::rename(BasicBlock* BB, RenamingStack& stack)
 {
-    const Value* V = stack.getValue();
+	const Value* V = stack.getValue();
 
-    if (Verbose) {
-        errs() << "Renaming " << V->getName() << " in " << BB->getName()
-                << "\n";
-    }
+	if (Verbose) {
+		errs() << "Renaming " << V->getName() << " in " << BB->getName()
+				<< "\n";
+	}
 
-    // Iterate over all instructions in BB
-    for (BasicBlock::iterator iit = BB->begin(), iend = BB->end(); iit != iend;
-            ++iit) {
-        Instruction* I = cast<Instruction>(&*iit);
-        PHINode* phi = dyn_cast<PHINode>(I);
+	// Iterate over all instructions in BB
+	for (BasicBlock::iterator iit = BB->begin(), iend = BB->end(); iit != iend;
+			++iit) {
+		Instruction* I = cast<Instruction>(&*iit);
+		PHINode* phi = dyn_cast<PHINode>(I);
 
-        // foreach instruction u in n that uses v
-        // We do this renaming only if it is not a SSI_phi
-        // because renaming in SSI_phi is done in a step afterwards
-        if (!phi || !is_SSIphi(phi)) {
-            for (User::op_iterator i = I->op_begin(), e = I->op_end(); i != e;
-                    ++i) {
-                Value *used = *i;
+		// foreach instruction u in n that uses v
+		// We do this renaming only if it is not a SSI_phi
+		// because renaming in SSI_phi is done in a step afterwards
+		if (!phi || !is_SSIphi(phi)) {
+			for (User::op_iterator i = I->op_begin(), e = I->op_end(); i != e;
+					++i) {
+				Value *used = *i;
 
-                if (used == V) {
-                    set_use(stack, I);
-                    break;
-                }
-            }
-        }
+				if (used == V) {
+					set_use(stack, I);
+					break;
+				}
+			}
+		}
 
-        // NEW DEFINITION OF V
-        // sigma or phi
-        if (phi) {
+		// NEW DEFINITION OF V
+		// sigma or phi
+		if (phi) {
 //			// Check if any of the incoming values is V
 //			for (unsigned i = 0, n = phi->getNumIncomingValues(); i < n; ++i) {
 //				Value* incoming_value = phi->getIncomingValue(i);
 //
 //				if (incoming_value == V) {
-            set_def(stack, phi);
+			set_def(stack, phi);
 //					break;
 //				}
 //			}
-        }
-        // copy
-        else if (is_SSIcopy(I)) {
+		}
+		// copy
+		else if (is_SSIcopy(I)) {
 //			Value* operand = I->getOperand(0);
 //
 //			if (operand == V) {
-            set_def(stack, I);
+			set_def(stack, I);
 //			}
-        }
-    }
+		}
+	}
 
-    // Searchs for SSI_phis in the successors, in order to rename uses of V in them
-    for (succ_iterator sit = succ_begin(BB), send = succ_end(BB); sit != send;
-            ++sit) {
-        BasicBlock* BBsucc = *sit;
-        for (BasicBlock::iterator BBit = BBsucc->begin(), BBend =
-                BBsucc->getFirstInsertionPt(); BBit != BBend; ++BBit) {
-            PHINode* phi = dyn_cast<PHINode>(&*BBit);
+	// Searchs for SSI_phis in the successors, in order to rename uses of V in them
+	for (succ_iterator sit = succ_begin(BB), send = succ_end(BB); sit != send;
+			++sit) {
+		BasicBlock* BBsucc = *sit;
+		for (BasicBlock::iterator BBit = BBsucc->begin(), BBend =
+				BBsucc->getFirstInsertionPt(); BBit != BBend; ++BBit) {
+			PHINode* phi = dyn_cast<PHINode>(&*BBit);
 
-            if (phi && is_SSIphi(phi)) {
-                set_use(stack, phi, BB);
-            }
-        }
-    }
+			if (phi && is_SSIphi(phi)) {
+				set_use(stack, phi, BB);
+			}
+		}
+	}
 
-    // Now call recursively for all children in the dominance tree
-    DomTreeNode* domtree = this->DTmap->getNode(BB);
-    for (DomTreeNode::iterator begin = domtree->begin(), end = domtree->end();
-            begin != end; ++begin) {
-        DomTreeNodeBase<BasicBlock> *DTN_children = *begin;
-        BasicBlock *BB_children = DTN_children->getBlock();
-        rename(BB_children, stack);
-    }
+	// Now call recursively for all children in the dominance tree
+	DomTreeNode* domtree = this->DTmap->getNode(BB);
+	for (DomTreeNode::iterator begin = domtree->begin(), end = domtree->end();
+			begin != end; ++begin) {
+		DomTreeNodeBase<BasicBlock> *DTN_children = *begin;
+		BasicBlock *BB_children = DTN_children->getBlock();
+		rename(BB_children, stack);
+	}
 }
 
 /*
@@ -452,81 +452,81 @@ void SSIfy::rename(BasicBlock* BB, RenamingStack& stack)
  */
 void SSIfy::set_use(RenamingStack& stack, Instruction* inst, BasicBlock* from)
 {
-    Value* V = stack.getValue();
-    Instruction* popped = 0;
+	Value* V = stack.getValue();
+	Instruction* popped = 0;
 
-    // If from != null, we are dealing with a renaming
-    // inside a SSI_phi.
-    if (!from) {
-        while (!stack.empty()) {
-            popped = stack.peek();
+	// If from != null, we are dealing with a renaming
+	// inside a SSI_phi.
+	if (!from) {
+		while (!stack.empty()) {
+			popped = stack.peek();
 
-            if (!this->DTmap->dominates(popped, inst)) {
-                stack.pop();
+			if (!this->DTmap->dominates(popped, inst)) {
+				stack.pop();
 
-                if (Verbose) {
-                    errs() << "set_use: Popping " << popped->getName()
-                            << " from the stack of "
-                            << stack.getValue()->getName() << "\n";
-                }
-            }
-            else {
-                break;
-            }
-        }
-    }
-    else {
-        while (!stack.empty()) {
-            popped = stack.peek();
+				if (Verbose) {
+					errs() << "set_use: Popping " << popped->getName()
+							<< " from the stack of "
+							<< stack.getValue()->getName() << "\n";
+				}
+			}
+			else {
+				break;
+			}
+		}
+	}
+	else {
+		while (!stack.empty()) {
+			popped = stack.peek();
 
-            if (!this->DTmap->dominates(popped, from)) {
-                stack.pop();
+			if (!this->DTmap->dominates(popped, from)) {
+				stack.pop();
 
-                if (Verbose) {
-                    errs() << "set_usephi: Popping " << popped->getName()
-                            << " from the stack of "
-                            << stack.getValue()->getName() << "\n";
-                }
-            }
-            else {
-                break;
-            }
-        }
-    }
+				if (Verbose) {
+					errs() << "set_usephi: Popping " << popped->getName()
+							<< " from the stack of "
+							<< stack.getValue()->getName() << "\n";
+				}
+			}
+			else {
+				break;
+			}
+		}
+	}
 
-    // If the stack has become empty, it means that the last valid
-    // definition is actually V itself, not popped. Otherwise, popped
-    // would still be in stack, therefore this wouldn't be empty.
-    Instruction* new_name = stack.empty() ? cast<Instruction>(V) : popped;
+	// If the stack has become empty, it means that the last valid
+	// definition is actually V itself, not popped. Otherwise, popped
+	// would still be in stack, therefore this wouldn't be empty.
+	Instruction* new_name = stack.empty() ? cast<Instruction>(V) : popped;
 
-    // We shouldn't perform renaming in any of the following cases
-    if ((new_name != V) && (new_name != inst)) {
-        if (!from) {
+	// We shouldn't perform renaming in any of the following cases
+	if ((new_name != V) && (new_name != inst)) {
+		if (!from) {
 
-            if (Verbose) {
-                errs() << "set_use: Renaming uses of " << V->getName() << " in "
-                        << inst->getName() << " to " << new_name->getName()
-                        << "\n";
-            }
+			if (Verbose) {
+				errs() << "set_use: Renaming uses of " << V->getName() << " in "
+						<< inst->getName() << " to " << new_name->getName()
+						<< "\n";
+			}
 
-            inst->replaceUsesOfWith(V, new_name);
-        }
-        else {
-            PHINode* phi = cast<PHINode>(inst);
-            int index = phi->getBasicBlockIndex(from);
+			inst->replaceUsesOfWith(V, new_name);
+		}
+		else {
+			PHINode* phi = cast<PHINode>(inst);
+			int index = phi->getBasicBlockIndex(from);
 
-            if (phi->getIncomingValue(index) == V) {
+			if (phi->getIncomingValue(index) == V) {
 
-                if (Verbose) {
-                    errs() << "set_usephi: Renaming uses of " << V->getName()
-                            << " in " << inst->getName() << " to "
-                            << new_name->getName() << "\n";
-                }
+				if (Verbose) {
+					errs() << "set_usephi: Renaming uses of " << V->getName()
+							<< " in " << inst->getName() << " to "
+							<< new_name->getName() << "\n";
+				}
 
-                phi->setIncomingValue(index, new_name);
-            }
-        }
-    }
+				phi->setIncomingValue(index, new_name);
+			}
+		}
+	}
 }
 
 /*
@@ -535,19 +535,19 @@ void SSIfy::set_use(RenamingStack& stack, Instruction* inst, BasicBlock* from)
  */
 void SSIfy::set_def(RenamingStack& stack, Instruction* inst)
 {
-    // Check if inst contains an use of V. If not
-    // we get out of here.
-    if (std::find(inst->op_begin(), inst->op_end(), stack.getValue())
-            == inst->op_end()) {
-        return;
-    }
+	// Check if inst contains an use of V. If not
+	// we get out of here.
+	if (std::find(inst->op_begin(), inst->op_end(), stack.getValue())
+			== inst->op_end()) {
+		return;
+	}
 
-    if (Verbose) {
-        errs() << "set_def: Pushing " << inst->getName() << " to the stack of "
-                << stack.getValue()->getName() << "\n";
-    }
+	if (Verbose) {
+		errs() << "set_def: Pushing " << inst->getName() << " to the stack of "
+				<< stack.getValue()->getName() << "\n";
+	}
 
-    stack.push(inst);
+	stack.push(inst);
 
 //	this->versions[stack.getValue()].insert(inst);
 }
@@ -557,113 +557,116 @@ void SSIfy::set_def(RenamingStack& stack, Instruction* inst)
  */
 void SSIfy::clean()
 {
-    /*
-     This structure saves all instructions that are marked to be erased.
-     We cannot simply erase on sight because of cases like this:
-     [V] -> {A B C D}
-     [B] -> {...}
-     If we visit V's set first and then erase B, the next iteration
-     would try to access B, which would have been already erased.
-     Thus, erases are performed afterwards.
-     */
-    SmallPtrSet<Instruction*, 16> to_be_erased;
+	/*
+	 This structure saves all instructions that are marked to be erased.
+	 We cannot simply erase on sight because of cases like this:
+	 [V] -> {A B C D}
+	 [B] -> {...}
+	 If we visit V's set first and then erase B, the next iteration
+	 would try to access B, which would have been already erased.
+	 Thus, erases are performed afterwards.
+	 */
+	SmallPtrSet<Instruction*, 16> to_be_erased;
 
-    for (DenseMap<Value*, SmallPtrSet<Instruction*, 4> >::iterator mit =
-            this->versions.begin(), mend = this->versions.end(); mit != mend;
-            ++mit) {
+	for (DenseMap<Value*, SmallPtrSet<Instruction*, 4> >::iterator mit =
+			this->versions.begin(), mend = this->versions.end(); mit != mend;
+			++mit) {
 
 //        errs() << mit->first->getName() << "\n";
-        Instruction* V = cast<Instruction>(mit->first);
-        SmallPtrSet<Instruction*, 4> created_vars = mit->second;
+		Instruction* V = cast<Instruction>(mit->first);
+		SmallPtrSet<Instruction*, 4> created_vars = mit->second;
 
 //		for (std::set<Instruction*>::iterator sit = created_vars.begin(), send =
 //				created_vars.end(); sit != send; ++sit) {
 //			errs() << "\t" << (*sit)->getName() << "\n";
 //		}
 
-        for (SmallPtrSet<Instruction*, 4>::iterator sit = created_vars.begin(),
-                send = created_vars.end(); sit != send; ++sit) {
-            Instruction* newvar = *sit;
+		for (SmallPtrSet<Instruction*, 4>::iterator sit = created_vars.begin(),
+				send = created_vars.end(); sit != send; ++sit) {
+			Instruction* newvar = *sit;
 //			errs() << newvar->getName() << "\n";
 
-            // The cleaning criteria for SSI_phi has two cases
-            // First: phi whose incoming values are ALL V itself.
-            // Second: phi that is not dominated by V.
-            if (is_SSIphi(newvar)) {
-                PHINode* ssi_phi = cast<PHINode>(newvar);
-                bool any_value_diff_V = false;
+			// The cleaning criteria for SSI_phi has two cases
+			// First: phi whose incoming values are ALL V itself.
+			// Second: phi that is not dominated by V.
+			if (is_SSIphi(newvar)) {
+				PHINode* ssi_phi = cast<PHINode>(newvar);
+				bool any_value_diff_V = false;
 
-                // First case: phis with all incoming values corresponding to
-                // the original value.
-                for (unsigned i = 0, n = ssi_phi->getNumIncomingValues(); i < n;
-                        ++i) {
-                    const Value* incoming = ssi_phi->getIncomingValue(i);
+				// First case: phis with all incoming values corresponding to
+				// the original value.
+				for (unsigned i = 0, n = ssi_phi->getNumIncomingValues(); i < n;
+						++i) {
+					const Value* incoming = ssi_phi->getIncomingValue(i);
 
-                    if (incoming != V) {
-                        any_value_diff_V = true;
-                        break;
-                    }
-                }
+					if (incoming != V) {
+						any_value_diff_V = true;
+						break;
+					}
+				}
 
-                if (!any_value_diff_V) {
+				if (!any_value_diff_V) {
 
-                    if (Verbose) {
-                        errs() << "Erasing " << ssi_phi->getName() << "\n";
-                    }
+					if (Verbose) {
+						errs() << "Erasing " << ssi_phi->getName() << "\n";
+					}
 
-                    ssi_phi->replaceAllUsesWith(V);
+					ssi_phi->replaceAllUsesWith(V);
 //                    ssi_phi->eraseFromParent();
-                    to_be_erased.insert(ssi_phi);
+					to_be_erased.insert(ssi_phi);
 
-                    continue;
-                }
+					continue;
+				}
 
-                // Second case
-                // FIXME: may be wrong
-                if (!this->DTmap->dominates(V, ssi_phi)) {
+				// Second case
+				// FIXME: may be wrong
+				if (!this->DTmap->dominates(V, ssi_phi)) {
 
-                    if (Verbose) {
-                        errs() << "Erasing " << ssi_phi->getName() << "\n";
-                    }
+					if (Verbose) {
+						errs() << "Erasing " << ssi_phi->getName() << "\n";
+					}
 
-                    ssi_phi->replaceAllUsesWith(V);
+					ssi_phi->replaceAllUsesWith(V);
 //                    ssi_phi->eraseFromParent();
-                    to_be_erased.insert(ssi_phi);
-                }
-            }
-            // SSI_sigmas and SSI_copies have two cases for cleaning
-            // First: they don't have any use
-            // Second: they aren't dominated by V.
-            else if (is_SSIsigma(newvar) || is_SSIcopy(newvar)) {
-                if (newvar->use_empty()) {
-                    if (Verbose) {
-                        errs() << "Erasing " << newvar->getName() << "\n";
-                    }
+					to_be_erased.insert(ssi_phi);
+				}
+			}
+			// SSI_sigmas and SSI_copies have two cases for cleaning
+			// First: they don't have any use
+			// Second: they aren't dominated by V.
+			else if (is_SSIsigma(newvar) || is_SSIcopy(newvar)) {
+				if (newvar->use_empty()) {
+					if (Verbose) {
+						errs() << "Erasing " << newvar->getName() << "\n";
+					}
 //                    newvar->eraseFromParent();
-                    to_be_erased.insert(newvar);
-                }
-                else if (!this->DTmap->dominates(V, newvar)) {
+					to_be_erased.insert(newvar);
+				}
+				else if (!this->DTmap->dominates(V, newvar)) {
 
-                    if (Verbose) {
-                        errs() << "Erasing " << newvar->getName() << "\n";
-                    }
+					if (Verbose) {
+						errs() << "Erasing " << newvar->getName() << "\n";
+					}
 
-                    newvar->replaceAllUsesWith(V);
+					newvar->replaceAllUsesWith(V);
 //                    newvar->eraseFromParent();
-                    to_be_erased.insert(newvar);
-                }
-            }
-            else {
-                errs() << "Problem here5\n";
-            }
-        }
-    }
+					to_be_erased.insert(newvar);
+				}
+			}
+			else {
+				errs() << "Problem here5\n";
+			}
+		}
+	}
 
-    for (SmallPtrSetIterator<Instruction*> sit = to_be_erased.begin(), send =
-            to_be_erased.end(); sit != send; ++sit) {
-        Instruction* I = *sit;
-        I->eraseFromParent();
-    }
+	// Create a topological sort of to be erased, based on this->versions
+	SmallVector<Instruction*, 8> topsort = get_topsort_versions(to_be_erased);
+
+	for (SmallVector<Instruction*, 8>::iterator sit = topsort.begin(), send =
+			topsort.end(); sit != send; ++sit) {
+		Instruction* I = *sit;
+		I->eraseFromParent();
+	}
 }
 
 // TODO: remove unnecessary created instructions
@@ -811,90 +814,90 @@ void SSIfy::clean()
 
 bool SSIfy::is_SSIphi(const Instruction* I)
 {
-    return I->getName().startswith(phiname);
+	return I->getName().startswith(phiname);
 }
 
 bool SSIfy::is_SSIsigma(const Instruction* I)
 {
-    return I->getName().startswith(signame);
+	return I->getName().startswith(signame);
 }
 
 bool SSIfy::is_SSIcopy(const Instruction* I)
 {
-    return I->getName().startswith(copname);
+	return I->getName().startswith(copname);
 }
 
 // For a given BasicBlock, return its iterated dominance frontier as a set
 SmallPtrSet<BasicBlock*, 4> SSIfy::get_iterated_df(BasicBlock* BB)
 {
-    SmallPtrSet<BasicBlock*, 4> iterated_df;
+	SmallPtrSet<BasicBlock*, 4> iterated_df;
 
-    SmallVector<BasicBlock*, 4> stack;
-    BasicBlock* current = BB;
+	SmallVector<BasicBlock*, 4> stack;
+	BasicBlock* current = BB;
 
-    // Initialize the stack with the original BasicBlock
-    // this stack is further populated with BasicBlocks
-    // in the iterated DF of the original BB, until
-    // this iterated DF ends.
-    stack.push_back(current);
+	// Initialize the stack with the original BasicBlock
+	// this stack is further populated with BasicBlocks
+	// in the iterated DF of the original BB, until
+	// this iterated DF ends.
+	stack.push_back(current);
 
-    while (!stack.empty()) {
-        current = stack.back();
-        stack.pop_back();
+	while (!stack.empty()) {
+		current = stack.back();
+		stack.pop_back();
 
-        DominanceFrontier::DomSetType frontier =
-                this->DFmap->find(current)->second;
+		DominanceFrontier::DomSetType frontier =
+				this->DFmap->find(current)->second;
 
-        for (DominanceFrontier::DomSetType::iterator fit = frontier.begin(),
-                fend = frontier.end(); fit != fend; ++fit) {
-            BasicBlock* BB_infrontier = *fit;
+		for (DominanceFrontier::DomSetType::iterator fit = frontier.begin(),
+				fend = frontier.end(); fit != fend; ++fit) {
+			BasicBlock* BB_infrontier = *fit;
 
-            // Only push to stack if this BasicBlock wasn't seen before
-            // P.S.: insert returns a pair. The second refers to whether
-            // the element was actually inserted or not.
-            if ((iterated_df.insert(BB_infrontier))) {
-                stack.push_back(BB_infrontier);
-            }
-        }
-    }
+			// Only push to stack if this BasicBlock wasn't seen before
+			// P.S.: insert returns a pair. The second refers to whether
+			// the element was actually inserted or not.
+			if ((iterated_df.insert(BB_infrontier))) {
+				stack.push_back(BB_infrontier);
+			}
+		}
+	}
 
-    return iterated_df;
+	return iterated_df;
 }
 
 SmallPtrSet<BasicBlock*, 4> SSIfy::get_iterated_pdf(BasicBlock* BB)
 {
-    SmallPtrSet<BasicBlock*, 4> iterated_pdf;
+	SmallPtrSet<BasicBlock*, 4> iterated_pdf;
 
-    SmallVector<BasicBlock*, 4> stack;
-    BasicBlock* current = BB;
+	SmallVector<BasicBlock*, 4> stack;
+	BasicBlock* current = BB;
 
-    // Initialize the stack with the original BasicBlock
-    // this stack is further populated with BasicBlocks
-    // in the iterated PDF of the original BB, until
-    // this iterated PDF ends.
-    stack.push_back(current);
+	// Initialize the stack with the original BasicBlock
+	// this stack is further populated with BasicBlocks
+	// in the iterated PDF of the original BB, until
+	// this iterated PDF ends.
+	stack.push_back(current);
 
-    while (!stack.empty()) {
-        current = stack.back();
-        stack.pop_back();
+	while (!stack.empty()) {
+		current = stack.back();
+		stack.pop_back();
 
-        PostDominanceFrontier::DomSetType frontier =
-                this->PDFmap->find(current)->second;
+		PostDominanceFrontier::DomSetType frontier =
+				this->PDFmap->find(current)->second;
 
-        for (PostDominanceFrontier::DomSetType::iterator fit = frontier.begin(),
-                fend = frontier.end(); fit != fend; ++fit) {
-            BasicBlock* BB_infrontier = *fit;
+		for (PostDominanceFrontier::DomSetType::iterator fit = frontier.begin(),
+				fend = frontier.end(); fit != fend; ++fit) {
+			BasicBlock* BB_infrontier = *fit;
 
-            // Only push to stack if this BasicBlock wasn't seen before
-            // P.S.: insert returns a pair. The second refers to whether
-            // the element was actually inserted or not.
-            if ((iterated_pdf.insert(BB_infrontier))) {
-                stack.push_back(BB_infrontier);
-            }
-        }
-    }
+			// Only push to stack if this BasicBlock wasn't seen before
+			// P.S.: insert returns a pair. The second refers to whether
+			// the element was actually inserted or not.
+			if ((iterated_pdf.insert(BB_infrontier))) {
+				stack.push_back(BB_infrontier);
+			}
+		}
+	}
 
-    return iterated_pdf;
+	return iterated_pdf;
 }
 
 /*
@@ -949,46 +952,98 @@ SmallPtrSet<BasicBlock*, 4> SSIfy::get_iterated_pdf(BasicBlock* BB)
  */
 bool SSIfy::is_actual(const Instruction* I)
 {
-    if (is_SSIphi(I)) {
-        return false;
-    }
-    if (is_SSIsigma(I)) {
-        return false;
-    }
-    if (is_SSIcopy(I)) {
-        return false;
-    }
+	if (is_SSIphi(I)) {
+		return false;
+	}
+	if (is_SSIsigma(I)) {
+		return false;
+	}
+	if (is_SSIcopy(I)) {
+		return false;
+	}
 
-    return true;
+	return true;
 }
 
-SmallVector<Instruction*, 8> llvm::SSIfy::get_topsort_versions()
+/*
+ * 	Creates a topological sorting of instructions in to_be_erased,
+ * 	based on relations from this->versions.
+ * 	That is, we sort to_be_erased in a way that, when we traverse it later,
+ * 	we are able to eraseFromParent in a order that doesn't break.
+ */
+SmallVector<Instruction*, 8> SSIfy::get_topsort_versions(
+		const SmallPtrSet<Instruction*, 16>& to_be_erased)
 {
-    SmallVector<Instruction*, 8> topsort;
+	SmallVector<Instruction*, 8> topsort;
 
-    // Create a graph of precedence from Versions' keys
-    Graph g;
+	// Create a graph of precedence from Versions' keys
+	Graph g;
 
-    for (DenseMapIterator<Value*, SmallPtrSet<Instruction*, 4> > mit =
-            versions.begin(), mend = versions.end(); mit != mend; ++mit) {
-        Value* V = mit->first;
+	// Add nodes
+	for (SmallPtrSetIterator<Instruction*> sit = to_be_erased.begin(), send =
+			to_be_erased.end(); sit != send; ++sit) {
+		g.addNode(*sit);
+	}
 
-        g.addNode(V);
-    }
+	// Add edges
+	for (DenseMapIterator<Value*, SmallPtrSet<Instruction*, 4> > mit =
+			versions.begin(), mend = versions.end(); mit != mend; ++mit) {
+		Value* V = mit->first;
+		const SmallPtrSet<Instruction*, 4>& set = mit->second;
+
+		if (!g.hasNode(V)) {
+			continue;
+		}
+
+		for (SmallPtrSetIterator<Instruction*> sit = set.begin(), send =
+				set.end(); sit != send; ++sit) {
+			g.addEdge(V, *sit);
+		}
+	}
+
+	// Let's start, shall we
+	SmallPtrSet<Value*, 8> unmarked_nodes(to_be_erased.begin(),
+			to_be_erased.end());
+
+	while (!unmarked_nodes.empty()) {
+		SmallPtrSetIterator<Value*> sit = unmarked_nodes.begin();
+		visit(g, unmarked_nodes, topsort, *sit);
+	}
+
+	// topsort now contains a topological sorting of nodes
+	return topsort;
+}
+
+void SSIfy::visit(Graph& g, SmallPtrSet<Value*, 8>& unmarked_nodes,
+		SmallVectorImpl<Instruction*>& list, Value* V)
+{
+	if (unmarked_nodes.count(V)) {
+		const SmallPtrSet<Value*, 4>& adj_list = g.vertices[V];
+
+		for (SmallPtrSetIterator<Value*> sit = adj_list.begin(), send =
+				adj_list.end(); sit != send; ++sit) {
+			Value* m = *sit;
+			visit(g, unmarked_nodes, list, m);
+		}
+
+		unmarked_nodes.erase(V);
+	}
+
+	list.push_back(cast<Instruction>(V));
 }
 
 void SSIfy::getAnalysisUsage(AnalysisUsage &AU) const
 {
-    AU.addRequired<DominatorTree>();
-    AU.addRequired<PostDominatorTree>();
-    AU.addRequired<DominanceFrontier>();
+	AU.addRequired<DominatorTree>();
+	AU.addRequired<PostDominatorTree>();
+	AU.addRequired<DominanceFrontier>();
 }
 
 char SSIfy::ID = 0;
 static RegisterPass<SSIfy> X("ssify", "SSIfy pass");
 
 ProgramPoint::ProgramPoint(Instruction* I, Position P) :
-        I(I), P(P)
+		I(I), P(P)
 {
 }
 
@@ -997,47 +1052,47 @@ ProgramPoint::ProgramPoint(Instruction* I, Position P) :
 //     - if not, their instructions' parents should be the same.
 bool ProgramPoint::operator==(const ProgramPoint& o) const
 {
-    if (this->P != o.P) {
-        return false;
-    }
+	if (this->P != o.P) {
+		return false;
+	}
 
-    if (this->P == ProgramPoint::Self) {
-        return this->I == o.I;
-    }
+	if (this->P == ProgramPoint::Self) {
+		return this->I == o.I;
+	}
 
-    const BasicBlock* this_I_parent = this->I->getParent();
-    const BasicBlock* o_I_parent = o.I->getParent();
+	const BasicBlock* this_I_parent = this->I->getParent();
+	const BasicBlock* o_I_parent = o.I->getParent();
 
-    return this_I_parent == o_I_parent;
+	return this_I_parent == o_I_parent;
 }
 
 bool ProgramPoint::operator!=(const ProgramPoint& o) const
 {
-    return !(*this == o);
+	return !(*this == o);
 }
 
 bool ProgramPoint::operator<(const ProgramPoint& o) const
 {
-    if (this->P < o.P) {
-        return true;
-    }
-    if (this->P > o.P) {
-        return false;
-    }
+	if (this->P < o.P) {
+		return true;
+	}
+	if (this->P > o.P) {
+		return false;
+	}
 
-    if (this->P == ProgramPoint::Self) {
-        return this->I < o.I;
-    }
+	if (this->P == ProgramPoint::Self) {
+		return this->I < o.I;
+	}
 
-    const BasicBlock* this_I_parent = this->I->getParent();
-    const BasicBlock* o_I_parent = o.I->getParent();
+	const BasicBlock* this_I_parent = this->I->getParent();
+	const BasicBlock* o_I_parent = o.I->getParent();
 
-    return this_I_parent < o_I_parent;
+	return this_I_parent < o_I_parent;
 }
 
 bool ProgramPoint::operator>(const ProgramPoint& o) const
 {
-    return !(*this == o) && !(*this < o);
+	return !(*this == o) && !(*this < o);
 }
 
 /*
@@ -1047,187 +1102,216 @@ bool ProgramPoint::operator>(const ProgramPoint& o) const
  */
 bool ProgramPoint::not_definition_of(const Value* V) const
 {
-    const Instruction* I = this->I;
-    const BasicBlock* BB = I->getParent();
+	const Instruction* I = this->I;
+	const BasicBlock* BB = I->getParent();
 
-    if (I == V)
-        return false;
+	if (I == V)
+		return false;
 
-    switch (this->P)
-    {
-        case ProgramPoint::In:
-            // phi case
-            for (BasicBlock::const_iterator BBit = BB->begin(), BBend =
-                    BB->getFirstNonPHI(); BBit != BBend; ++BBit) {
+	switch (this->P)
+	{
+		case ProgramPoint::In:
+			// phi case
+			for (BasicBlock::const_iterator BBit = BB->begin(), BBend =
+					BB->getFirstNonPHI(); BBit != BBend; ++BBit) {
 
-                const PHINode* op = cast<PHINode>(&*BBit);
+				const PHINode* op = cast<PHINode>(&*BBit);
 
-                if (SSIfy::is_SSIphi(op)) {
-                    unsigned n = op->getNumIncomingValues();
-                    unsigned i;
-                    for (i = 0; i < n; ++i) {
-                        if (op->getIncomingValue(i) == V) {
-                            return false;
-                        }
-                    }
-                }
-            }
-            break;
+				if (SSIfy::is_SSIphi(op)) {
+					unsigned n = op->getNumIncomingValues();
+					unsigned i;
+					for (i = 0; i < n; ++i) {
+						if (op->getIncomingValue(i) == V) {
+							return false;
+						}
+					}
+				}
+			}
+			break;
 
-        case ProgramPoint::Out:
-            // sigma case
-            for (succ_const_iterator BBsuccit = succ_begin(BB), BBsuccend =
-                    succ_end(BB); BBsuccit != BBsuccend; ++BBsuccit) {
-                const BasicBlock* BBsucc = *BBsuccit;
+		case ProgramPoint::Out:
+			// sigma case
+			for (succ_const_iterator BBsuccit = succ_begin(BB), BBsuccend =
+					succ_end(BB); BBsuccit != BBsuccend; ++BBsuccit) {
+				const BasicBlock* BBsucc = *BBsuccit;
 
-                for (BasicBlock::const_iterator BBit = BBsucc->begin(), BBend =
-                        BBsucc->getFirstNonPHI(); BBit != BBend; ++BBit) {
+				for (BasicBlock::const_iterator BBit = BBsucc->begin(), BBend =
+						BBsucc->getFirstNonPHI(); BBit != BBend; ++BBit) {
 
-                    const PHINode* op = cast<PHINode>(&*BBit);
+					const PHINode* op = cast<PHINode>(&*BBit);
 
-                    if (SSIfy::is_SSIsigma(op)) {
-                        unsigned n = op->getNumIncomingValues();
-                        unsigned i;
-                        for (i = 0; i < n; ++i) {
-                            if (op->getIncomingValue(i) == V) {
-                                return false;
-                            }
-                        }
-                    }
-                }
-            }
-            break;
+					if (SSIfy::is_SSIsigma(op)) {
+						unsigned n = op->getNumIncomingValues();
+						unsigned i;
+						for (i = 0; i < n; ++i) {
+							if (op->getIncomingValue(i) == V) {
+								return false;
+							}
+						}
+					}
+				}
+			}
+			break;
 
-        case ProgramPoint::Self:
-            // copy case
-            // we check this case by looking at the instruction AFTER, since
-            // because I is actually the instruction for which a copy would have
-            // been created. This copy, therefore, is the next instruction.
+		case ProgramPoint::Self:
+			// copy case
+			// we check this case by looking at the instruction AFTER, since
+			// because I is actually the instruction for which a copy would have
+			// been created. This copy, therefore, is the next instruction.
 
-            // This next line is just a simple way to get the next instruction.
-            // Don't panic.
-            const Instruction* next = &*(++BasicBlock::const_iterator(*I));
+			// This next line is just a simple way to get the next instruction.
+			// Don't panic.
+			const Instruction* next = &*(++BasicBlock::const_iterator(*I));
 
-            if (SSIfy::is_SSIcopy(next)) {
-                // Check if operand is V
-                if (next->getOperand(0) == V) {
-                    return false;
-                }
-            }
-            break;
-    }
+			if (SSIfy::is_SSIcopy(next)) {
+				// Check if operand is V
+				if (next->getOperand(0) == V) {
+					return false;
+				}
+			}
+			break;
+	}
 
-    return true;
+	return true;
 }
 
 const DominanceFrontier::DomSetType &
 PostDominanceFrontier::calculate(const PostDominatorTree &DT,
-        const DomTreeNode *Node)
+		const DomTreeNode *Node)
 {
 // Loop over CFG successors to calculate DFlocal[Node]
-    BasicBlock *BB = Node->getBlock();
-    DomSetType &S = Frontiers[BB]; // The new set to fill in...
-    if (getRoots().empty())
-        return S;
+	BasicBlock *BB = Node->getBlock();
+	DomSetType &S = Frontiers[BB]; // The new set to fill in...
+	if (getRoots().empty())
+		return S;
 
-    if (BB)
-        for (pred_iterator SI = pred_begin(BB), SE = pred_end(BB); SI != SE;
-                ++SI) {
-            BasicBlock *P = *SI;
-            // Does Node immediately dominate this predecessor?
-            DomTreeNode *SINode = DT[P];
-            if (SINode && SINode->getIDom() != Node)
-                S.insert(P);
-        }
+	if (BB)
+		for (pred_iterator SI = pred_begin(BB), SE = pred_end(BB); SI != SE;
+				++SI) {
+			BasicBlock *P = *SI;
+			// Does Node immediately dominate this predecessor?
+			DomTreeNode *SINode = DT[P];
+			if (SINode && SINode->getIDom() != Node)
+				S.insert(P);
+		}
 
 // At this point, S is DFlocal.  Now we union in DFup's of our children...
 // Loop through and visit the nodes that Node immediately dominates (Node's
 // children in the IDomTree)
 //
-    for (DomTreeNode::const_iterator NI = Node->begin(), NE = Node->end();
-            NI != NE; ++NI) {
-        DomTreeNode *IDominee = *NI;
-        const DomSetType &ChildDF = calculate(DT, IDominee);
+	for (DomTreeNode::const_iterator NI = Node->begin(), NE = Node->end();
+			NI != NE; ++NI) {
+		DomTreeNode *IDominee = *NI;
+		const DomSetType &ChildDF = calculate(DT, IDominee);
 
-        DomSetType::const_iterator CDFI = ChildDF.begin(), CDFE = ChildDF.end();
-        for (; CDFI != CDFE; ++CDFI) {
-            if (!DT.properlyDominates(Node, DT[*CDFI]))
-                S.insert(*CDFI);
-        }
-    }
+		DomSetType::const_iterator CDFI = ChildDF.begin(), CDFE = ChildDF.end();
+		for (; CDFI != CDFE; ++CDFI) {
+			if (!DT.properlyDominates(Node, DT[*CDFI]))
+				S.insert(*CDFI);
+		}
+	}
 
-    return S;
+	return S;
 }
 
 //////////////////////////////////////////////////////////////////
 
 RenamingStack::RenamingStack(Value * V)
 {
-    this->V = V;
+	this->V = V;
 }
 
 Value * RenamingStack::getValue() const
 {
-    return this->V;
+	return this->V;
 }
 
 void RenamingStack::push(Instruction* I)
 {
-    this->stack.push_back(I);
+	this->stack.push_back(I);
 }
 
 void RenamingStack::pop()
 {
-    this->stack.pop_back();
+	this->stack.pop_back();
 }
 
 Instruction * RenamingStack::peek()
 {
-    return this->stack.back();
+	return this->stack.back();
 }
 
 bool RenamingStack::empty() const
 {
-    return this->stack.empty();
+	return this->stack.empty();
 }
 
 bool ProgramPoint::is_join() const
 {
-    return !this->I->getParent()->getSinglePredecessor()
-            && (this->P == ProgramPoint::In);
+	return !this->I->getParent()->getSinglePredecessor()
+			&& (this->P == ProgramPoint::In);
 }
 
 bool ProgramPoint::is_branch() const
 {
-    return isa<BranchInst>(this->I) && (this->P == ProgramPoint::Out);
+	return isa<BranchInst>(this->I) && (this->P == ProgramPoint::Out);
 }
 
 bool ProgramPoint::is_copy() const
 {
-    return this->P == ProgramPoint::Self;
+	return this->P == ProgramPoint::Self;
 }
 
-void GraphNode::addEdge(const GraphNode& to)
+/*void GraphNode::addEdge(const GraphNode& to)
+ {
+ this->adjacency_list.insert(&to);
+ }
+
+ bool GraphNode::hasEdge(const GraphNode& to) const
+ {
+ return this->adjacency_list.count(&to);
+ }*/
+
+void Graph::addNode(Value* V)
 {
-    this->adjacency_list.insert(&to);
+	this->vertices[V];
 }
 
-bool GraphNode::hasEdge(const GraphNode& to) const
+bool Graph::hasNode(Value* V)
 {
-    return this->adjacency_list.count(&to);
+	DenseMap<Value*, SmallPtrSet<Value*, 4> >::iterator it =
+			this->vertices.find(V);
+
+	return it != this->vertices.end();
 }
 
-GraphNode& Graph::addNode(Value* V)
+/*
+ *  Add edge to graph.
+ *  If from is not in the graph, we do not add it!
+ */
+void Graph::addEdge(Value* from, Value* to)
 {
-    return this->vertices.insert(new GraphNode(V)).first;
+	DenseMap<Value*, SmallPtrSet<Value*, 4> >::iterator it =
+			this->vertices.find(from);
+
+	if (it != this->vertices.end()) {
+		it->second.insert(to);
+	}
 }
 
-void Graph::addEdge(GraphNode& from, const GraphNode& to) const
+/*
+ *  Return if an edge is present in the graph
+ *  We do not create any new nodes.
+ */
+bool Graph::hasEdge(Value* from, Value* to)
 {
-    from.addEdge(to);
-}
+	DenseMap<Value*, SmallPtrSet<Value*, 4> >::iterator it =
+			this->vertices.find(from);
 
-bool Graph::hasEdge(const GraphNode& from, const GraphNode& to) const
-{
-    return from.hasEdge(to);
+	if (it != this->vertices.end()) {
+		return it->second.count(to);
+	}
+	else {
+		return false;
+	}
 }
