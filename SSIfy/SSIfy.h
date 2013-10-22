@@ -76,13 +76,6 @@ struct SSIfy: public FunctionPass
 	void set_use(RenamingStack& stack, Instruction* inst, BasicBlock* from = 0);
 	void clean();
 
-//	std::set<Instruction*> set_intersection(const std::set<Instruction*>& s1,
-//			const std::set<Instruction*>& s2);
-//	std::set<Instruction*> set_union(const std::set<Instruction*>& s1,
-//			const std::set<Instruction*>& s2);
-//	std::set<Instruction*> set_difference(const std::set<Instruction*>& s1,
-//			const std::set<Instruction*>& s2);
-
 	static bool is_SSIphi(const Instruction* I);
 	static bool is_SSIsigma(const Instruction* I);
 	static bool is_SSIcopy(const Instruction* I);
@@ -90,10 +83,12 @@ struct SSIfy: public FunctionPass
 
 	SmallPtrSet<BasicBlock*, 4> get_iterated_df(BasicBlock* BB);
 	SmallPtrSet<BasicBlock*, 4> get_iterated_pdf(BasicBlock* BB);
+
 	SmallVector<Instruction*, 8> get_topsort_versions(
 			const SmallPtrSet<Instruction*, 16>& to_be_erased);
 	void visit(Graph& g, SmallPtrSet<Value*, 8>& unmarked_nodes,
 			SmallVectorImpl<Instruction*>& list, Value* V);
+
 	void getAnalysisUsage(AnalysisUsage &AU) const;
 };
 
@@ -143,32 +138,8 @@ public:
 };
 
 /*
- class GraphNode
- {
- public:
- const Value* V;
- SmallPtrSet<const GraphNode*, 4> adjacency_list;
-
- GraphNode(const Value* V)
- {
- this->V = V;
- }
-
- void addEdge(const GraphNode& to);
- bool hasEdge(const GraphNode& to) const;
-
- bool operator<(const GraphNode& o) const
- {
- return this->V < o.V;
- }
-
- bool operator==(const GraphNode& o) const
- {
- return this->V == o.V;
- }
- };
+ * 	Used to determine topological ordering in the clean function
  */
-
 class Graph
 {
 public:

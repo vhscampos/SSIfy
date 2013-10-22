@@ -395,23 +395,11 @@ void SSIfy::rename(BasicBlock* BB, RenamingStack& stack)
 		// NEW DEFINITION OF V
 		// sigma or phi
 		if (phi) {
-//			// Check if any of the incoming values is V
-//			for (unsigned i = 0, n = phi->getNumIncomingValues(); i < n; ++i) {
-//				Value* incoming_value = phi->getIncomingValue(i);
-//
-//				if (incoming_value == V) {
 			set_def(stack, phi);
-//					break;
-//				}
-//			}
 		}
 		// copy
 		else if (is_SSIcopy(I)) {
-//			Value* operand = I->getOperand(0);
-//
-//			if (operand == V) {
 			set_def(stack, I);
-//			}
 		}
 	}
 
@@ -568,23 +556,25 @@ void SSIfy::clean()
 	 */
 	SmallPtrSet<Instruction*, 16> to_be_erased;
 
+	// This map associates instructions - that will be removed - to Values
+	// to which their uses will be renamed.
+	// In other words, this map is this->versions reversed, but containing
+	// only instructions that will be erased for sure.
+	DenseMap<Instruction*, Instruction*> maptooldvalues;
+
+	// Please note that this next for is intended to identify what
+	// instructions should be erased due to being either wrong or useless.
+	// The actual remotion happens after.
 	for (DenseMap<Value*, SmallPtrSet<Instruction*, 4> >::iterator mit =
 			this->versions.begin(), mend = this->versions.end(); mit != mend;
 			++mit) {
 
-//        errs() << mit->first->getName() << "\n";
 		Instruction* V = cast<Instruction>(mit->first);
 		SmallPtrSet<Instruction*, 4> created_vars = mit->second;
-
-//		for (std::set<Instruction*>::iterator sit = created_vars.begin(), send =
-//				created_vars.end(); sit != send; ++sit) {
-//			errs() << "\t" << (*sit)->getName() << "\n";
-//		}
 
 		for (SmallPtrSet<Instruction*, 4>::iterator sit = created_vars.begin(),
 				send = created_vars.end(); sit != send; ++sit) {
 			Instruction* newvar = *sit;
-//			errs() << newvar->getName() << "\n";
 
 			// The cleaning criteria for SSI_phi has two cases
 			// First: phi whose incoming values are ALL V itself.
@@ -611,9 +601,8 @@ void SSIfy::clean()
 						errs() << "Erasing " << ssi_phi->getName() << "\n";
 					}
 
-					ssi_phi->replaceAllUsesWith(V);
-//                    ssi_phi->eraseFromParent();
 					to_be_erased.insert(ssi_phi);
+					maptooldvalues[ssi_phi] = V;
 
 					continue;
 				}
@@ -626,9 +615,8 @@ void SSIfy::clean()
 						errs() << "Erasing " << ssi_phi->getName() << "\n";
 					}
 
-					ssi_phi->replaceAllUsesWith(V);
-//                    ssi_phi->eraseFromParent();
 					to_be_erased.insert(ssi_phi);
+					maptooldvalues[ssi_phi] = V;
 				}
 			}
 			// SSI_sigmas and SSI_copies have two cases for cleaning
@@ -639,7 +627,6 @@ void SSIfy::clean()
 					if (Verbose) {
 						errs() << "Erasing " << newvar->getName() << "\n";
 					}
-//                    newvar->eraseFromParent();
 					to_be_erased.insert(newvar);
 				}
 				else if (!this->DTmap->dominates(V, newvar)) {
@@ -648,9 +635,8 @@ void SSIfy::clean()
 						errs() << "Erasing " << newvar->getName() << "\n";
 					}
 
-					newvar->replaceAllUsesWith(V);
-//                    newvar->eraseFromParent();
 					to_be_erased.insert(newvar);
+					maptooldvalues[newvar] = V;
 				}
 			}
 			else {
@@ -660,11 +646,20 @@ void SSIfy::clean()
 	}
 
 	// Create a topological sort of to be erased, based on this->versions
+	// This way, we can remove instructions in a order that respects dependency
 	SmallVector<Instruction*, 8> topsort = get_topsort_versions(to_be_erased);
 
 	for (SmallVector<Instruction*, 8>::iterator sit = topsort.begin(), send =
 			topsort.end(); sit != send; ++sit) {
 		Instruction* I = *sit;
+
+		DenseMap<Instruction*, Instruction*>::iterator it = maptooldvalues.find(
+				I);
+
+		if (it != maptooldvalues.end()) {
+			I->replaceAllUsesWith(it->second);
+		}
+
 		I->eraseFromParent();
 	}
 }
@@ -901,51 +896,6 @@ SmallPtrSet<BasicBlock*, 4> SSIfy::get_iterated_pdf(BasicBlock* BB)
 }
 
 /*
-
- * 	Performs intersection between two sets
-
- std::set<Instruction*> SSIfy::set_intersection(const std::set<Instruction*>& s1,
- const std::set<Instruction*>& s2) {
- std::set<Instruction*> result;
-
- for (std::set<Instruction*>::iterator sit = s1.begin(), send = s2.end();
- sit != send; ++sit) {
- Instruction* value = *sit;
- if (s2.find(value) != s2.end()) {
- result.insert(value);
- }
- }
-
- return result;
- }
-
- std::set<Instruction*> SSIfy::set_union(const std::set<Instruction*>& s1,
- const std::set<Instruction*>& s2) {
- std::set<Instruction*> result;
-
- result.insert(s1.begin(), s1.end());
- result.insert(s2.begin(), s2.end());
-
- return result;
- }
-
- std::set<Instruction*> SSIfy::set_difference(const std::set<Instruction*>& s1,
- const std::set<Instruction*>& s2) {
- std::set<Instruction*> result;
-
- for (std::set<Instruction*>::iterator sit = s1.begin(), send = s2.end();
- sit != send; ++sit) {
- Instruction* value = *sit;
- if (s2.find(value) == s2.end()) {
- result.insert(value);
- }
- }
-
- return result;
- }
- */
-
-/*
  * 	Checks if I is an actual instruction.
  * 	Actual instruction is defined as not being created by us,
  * 	that is, sigma, artificial phi, and copy.
@@ -970,6 +920,8 @@ bool SSIfy::is_actual(const Instruction* I)
  * 	based on relations from this->versions.
  * 	That is, we sort to_be_erased in a way that, when we traverse it later,
  * 	we are able to eraseFromParent in a order that doesn't break.
+ *
+ * 	Algorithm from Cormen 2001 and Wikipedia.
  */
 SmallVector<Instruction*, 8> SSIfy::get_topsort_versions(
 		const SmallPtrSet<Instruction*, 16>& to_be_erased)
@@ -1027,9 +979,9 @@ void SSIfy::visit(Graph& g, SmallPtrSet<Value*, 8>& unmarked_nodes,
 		}
 
 		unmarked_nodes.erase(V);
-	}
 
-	list.push_back(cast<Instruction>(V));
+		list.push_back(cast<Instruction>(V));
+	}
 }
 
 void SSIfy::getAnalysisUsage(AnalysisUsage &AU) const
