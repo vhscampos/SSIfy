@@ -8,6 +8,8 @@
 #ifndef SSIFY_H_
 #define SSIFY_H_
 
+#define DEBUG_TYPE "SSIfy"
+
 #include "llvm/ADT/Statistic.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/SmallPtrSet.h"
@@ -28,6 +30,13 @@
 
 namespace llvm
 {
+
+STATISTIC(NumPHIsCreated, "Number of SSI_phis created");
+STATISTIC(NumSigmasCreated, "Number of SSI_sigmas created");
+STATISTIC(NumCopiesCreated, "Number of SSI_copies created");
+STATISTIC(NumPHIsDeleted, "Number of SSI_phis deleted");
+STATISTIC(NumSigmasDeleted, "Number of SSI_sigmas deleted");
+STATISTIC(NumCopiesDeleted, "Number of SSI_copies deleted");
 
 // Forward declarations
 class ProgramPoint;

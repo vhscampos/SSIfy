@@ -286,6 +286,7 @@ void SSIfy::split(Instruction* V, std::set<ProgramPoint> Iup,
 				}
 
 				this->versions[V].insert(new_phi);
+				++NumPHIsCreated;
 			}
 			else if (point.is_branch()) {
 				// sigma
@@ -306,6 +307,7 @@ void SSIfy::split(Instruction* V, std::set<ProgramPoint> Iup,
 					}
 
 					this->versions[V].insert(new_sigma);
+					++NumSigmasCreated;
 				}
 			}
 			else {
@@ -339,6 +341,7 @@ void SSIfy::split(Instruction* V, std::set<ProgramPoint> Iup,
 				}
 
 				this->versions[V].insert(new_copy);
+				++NumCopiesCreated;
 			}
 		}
 	}
@@ -658,6 +661,17 @@ void SSIfy::clean()
 
 		if (it != maptooldvalues.end()) {
 			I->replaceAllUsesWith(it->second);
+		}
+
+		// STATISTICS
+		if (is_SSIphi(I)) {
+			++NumPHIsDeleted;
+		}
+		else if (is_SSIsigma(I)) {
+			++NumSigmasDeleted;
+		}
+		else if (is_SSIcopy(I)) {
+			++NumCopiesDeleted;
 		}
 
 		I->eraseFromParent();
