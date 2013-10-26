@@ -1245,10 +1245,7 @@ void Graph::addNode(Value* V)
 
 bool Graph::hasNode(Value* V)
 {
-	DenseMap<Value*, SmallPtrSet<Value*, 4> >::iterator it =
-			this->vertices.find(V);
-
-	return it != this->vertices.end();
+	return this->vertices.count(V);
 }
 
 /*
