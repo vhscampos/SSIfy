@@ -76,13 +76,19 @@ struct SSIfy: public FunctionPass
 	}
 
 	virtual bool runOnFunction(Function &F);
+
 	void dragon(Instruction* V);
 	void split(Instruction* V, std::set<ProgramPoint> Iup,
 			std::set<ProgramPoint> Idown);
+
+	bool isNotNecessary(const Instruction* insert_point, const Value* V);
+
 	void rename_initial(Instruction* V);
 	void rename(BasicBlock* BB, RenamingStack& stack);
+
 	void set_def(RenamingStack& stack, Instruction* inst);
 	void set_use(RenamingStack& stack, Instruction* inst, BasicBlock* from = 0);
+
 	void clean();
 
 	static bool is_SSIphi(const Instruction* I);

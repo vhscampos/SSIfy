@@ -255,6 +255,13 @@ void SSIfy::split(Instruction* V, std::set<ProgramPoint> Iup,
 			Instruction* insertion_point = point.I;
 			ProgramPoint::Position relative_position = point.P;
 
+			// Check if new variable is actually not necessary
+			// NOTE: it only checks if it is NOT necessary. That doesn't
+			// mean that it is necessary if the check returns false.
+			if (isNotNecessary(insertion_point, V)) {
+				continue;
+			}
+
 			if (point.is_join()) {
 				// phi
 				unsigned numReservedValues = std::distance(
@@ -422,11 +429,13 @@ void SSIfy::rename(BasicBlock* BB, RenamingStack& stack)
 
 	// Now call recursively for all children in the dominance tree
 	DomTreeNode* domtree = this->DTmap->getNode(BB);
-	for (DomTreeNode::iterator begin = domtree->begin(), end = domtree->end();
-			begin != end; ++begin) {
-		DomTreeNodeBase<BasicBlock> *DTN_children = *begin;
-		BasicBlock *BB_children = DTN_children->getBlock();
-		rename(BB_children, stack);
+	if (domtree) {
+		for (DomTreeNode::iterator begin = domtree->begin(), end =
+				domtree->end(); begin != end; ++begin) {
+			DomTreeNodeBase<BasicBlock> *DTN_children = *begin;
+			BasicBlock *BB_children = DTN_children->getBlock();
+			rename(BB_children, stack);
+		}
 	}
 }
 
@@ -996,6 +1005,20 @@ void SSIfy::visit(Graph& g, SmallPtrSet<Value*, 8>& unmarked_nodes,
 
 		list.push_back(cast<Instruction>(V));
 	}
+}
+
+bool SSIfy::isNotNecessary(const Instruction* insert_point, const Value* V)
+{
+	for (Value::const_use_iterator uit = V->use_begin(), uend = V->use_end();
+			uit != uend; ++uit) {
+		const Instruction* use = cast<Instruction>(*uit);
+
+		if (this->DTmap->dominates(insert_point, use)) {
+			return false;
+		}
+	}
+
+	return true;
 }
 
 void SSIfy::getAnalysisUsage(AnalysisUsage &AU) const
