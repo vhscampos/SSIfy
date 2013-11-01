@@ -1,0 +1,31 @@
+##=== TEST.ssify.report - Report desc for ssify tests ----*- perl -*-===##
+#
+# This file defines a report to be generated for the ssify test.
+#
+##===----------------------------------------------------------------------===##
+
+# Sort by name
+$SortCol = 1;
+$TrimRepeatedPrefix = 1;
+
+# These are the columns for the report.  The first entry is the header for the
+# column, the second is the regex to use to match the value.  Empty list create
+# seperators, and closures may be put in for custom processing.
+(
+# Name
+ ["Name" , '\'([^\']+)\' Program'],
+ [],
+ ["PHIc", '([0-9]+).*Number of SSI_phis created'],
+ [],
+ ["PHId", '([0-9]+).*Number of SSI_phis deleted'],
+ [],
+ ["SIGc", '([0-9]+).*Number of SSI_sigmas created'],
+ [],
+ ["SIGd", '([0-9]+).*Number of SSI_sigmas deleted'],
+ [],
+ ["COPc", '([0-9]+).*Number of SSI_copies created'],
+ [],
+ ["COPd", '([0-9]+).*Number of SSI_copies deleted'],
+ [],
+ ["runtime", '([0-9]+\.[0-9]+).*SSIfy pass'],
+);
