@@ -69,7 +69,8 @@
  /home/vhscampos/Research/llvm/include/llvm/Support/InstIterator.h \
  /home/vhscampos/Research/llvm/include/llvm/Support/CommandLine.h \
  /home/vhscampos/Research/llvm/include/llvm/ADT/StringMap.h \
- /home/vhscampos/Research/llvm/include/llvm/Support/Allocator.h
+ /home/vhscampos/Research/llvm/include/llvm/Support/Allocator.h \
+ /home/vhscampos/Research/llvm/include/llvm/Support/Timer.h
 
 SSIfy.h:
 
@@ -210,3 +211,5 @@ SSIfy.h:
 /home/vhscampos/Research/llvm/include/llvm/ADT/StringMap.h:
 
 /home/vhscampos/Research/llvm/include/llvm/Support/Allocator.h:
+
+/home/vhscampos/Research/llvm/include/llvm/Support/Timer.h:

@@ -5,6 +5,16 @@
  *      Author: vhscampos
  */
 
+/*
+ * 	Command-line options
+ * 		-v: 		verbose mode
+ * 		-set xxxx:	set what will be the initial points (x either 1 or 0)
+ *			- 1st: exit of conditionals, downwards
+ *			- 2nd: exit of conditionals, upwards
+ *			- 3rd: uses, downwards
+ *			- 4th: uses, upwards
+ */
+
 #ifndef SSIFY_H_
 #define SSIFY_H_
 
@@ -23,6 +33,7 @@
 #include "llvm/Analysis/DominanceFrontier.h"
 #include "llvm/Support/InstIterator.h"
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/Timer.h"
 #include <set>
 #include <string>
 #include <algorithm>
@@ -58,6 +69,7 @@ struct SSIfy: public FunctionPass
 	DominanceFrontier* DFmap;
 	PostDominanceFrontier* PDFmap;
 
+	// Command-line options for program points
 	bool flags[4];
 
 	// This map associates variables with the set of new variables
@@ -77,28 +89,91 @@ struct SSIfy: public FunctionPass
 
 	virtual bool runOnFunction(Function &F);
 
-	void dragon(Instruction* V);
+	/*
+	 * 	Determines what is the splitting strategy for the variable V
+	 * 	and calls the SSIfy functions in order
+	 * 		- split
+	 * 		- rename
+	 */
+	void run(Instruction* V);
+
+	/*
+	 * 	Splits live range of the variable V according to the splitting strategy
+	 * 	defined as input.
+	 */
 	void split(Instruction* V, std::set<ProgramPoint> Iup,
 			std::set<ProgramPoint> Idown);
 
 	bool isNotNecessary(const Instruction* insert_point, const Value* V);
 
+	/*
+	 * 	Renaming function
+	 * 	Called after the creation of new variables (split function)
+	 */
 	void rename_initial(Instruction* V);
+
+	/*
+	 * 	Passes through all instructions in BB to update uses of the
+	 * 	variable V to its most recent definition, as well as registering
+	 * 	new definitions when it takes place
+	 */
 	void rename(BasicBlock* BB, RenamingStack& stack);
 
+	/*
+	 * 	Pushes into the stack a new definition of the variable V, that being the
+	 * 	instruction inst
+	 */
 	void set_def(RenamingStack& stack, Instruction* inst);
+
+	/*
+	 * 	Renames uses of the variable V in the instruction inst to its last definition according
+	 * 	to the stack of definitions. Note that it pops definitions from the stack until it finds
+	 * 	one that is correct, i.e., dominates the instruction inst.
+	 *
+	 * 	from stands for pointer to the predecessor block. It is used when renaming variables
+	 * 	inside a SSI_phi to tell which incoming value should be renamed.
+	 *
+	 */
 	void set_use(RenamingStack& stack, Instruction* inst, BasicBlock* from = 0);
 
+	/*
+	 * 	Look at this->versions, which contains all new variables created and what Value
+	 * 	were they created for, and determines which ones should be removed for not being
+	 * 	useful or simply wrong.
+	 */
 	void clean();
 
+	/*
+	 *	These functions check whether an instruction is of the custom types that
+	 *	we create in this pass.
+	 *	This check is performed by looking at its name.
+	 */
 	static bool is_SSIphi(const Instruction* I);
 	static bool is_SSIsigma(const Instruction* I);
 	static bool is_SSIcopy(const Instruction* I);
+
+	/*
+	 * 	Checks if I is an actual instruction.
+	 * 	Actual instruction is defined as not being created by us,
+	 * 	that is, sigma, artificial phi, and copy.
+	 * 	It uses the three functions just above.
+	 */
 	static bool is_actual(const Instruction* I);
 
+	// For a given BasicBlock, return its iterated dominance frontier as a set
 	SmallPtrSet<BasicBlock*, 4> get_iterated_df(BasicBlock* BB);
+
+	// For a given BasicBlock, return its iterated post-dominance frontier as a set
 	SmallPtrSet<BasicBlock*, 4> get_iterated_pdf(BasicBlock* BB);
 
+	/*
+	 * 	Creates a topological sorting of instructions in to_be_erased,
+	 * 	based on relations from this->versions.
+	 * 	That is, we sort to_be_erased in a way that, when we traverse it later,
+	 * 	we are able to eraseFromParent in a order that doesn't break.
+	 *
+	 * 	Algorithm from Cormen 2001 and Wikipedia.
+	 */
 	SmallVector<Instruction*, 8> get_topsort_versions(
 			const SmallPtrSet<Instruction*, 16>& to_be_erased);
 	void visit(Graph& g, SmallPtrSet<Value*, 8>& unmarked_nodes,
@@ -107,6 +182,22 @@ struct SSIfy: public FunctionPass
 	void getAnalysisUsage(AnalysisUsage &AU) const;
 };
 
+/*
+ * 	A program point is a pair of one instruction and a region.
+ *
+ * 	Region can be: in (entry of block, join point, phi insertion)
+ * 	               self (middle of block, parallel copy insertion)
+ * 	               out (exit of block, branch point, sigma insertion)
+ *
+ * 	Instructions have different uses depending on the region associated
+ * 	      in:   instruction is used only to determine what BasicBlock the
+ * 	            program point refers to.
+ * 	      self: instruction is the precise insertion point of the parallel
+ * 	            copy. Thus, the future copy will be inserted just after the
+ * 	            instruction here.
+ * 	      out:  instruction is the branch instruction that is followed by the
+ * 	            two outgoing edges.
+ */
 class ProgramPoint
 {
 public:
@@ -118,13 +209,27 @@ public:
 public:
 	explicit ProgramPoint(Instruction* I, Position P);
 
+	/*
+	 * Checks if this program point doesn't have a definition of V already
+	 * We have three cases: sigma, phi, or copy
+	 * Each one has a different logic.
+	 */
 	bool not_definition_of(const Value* V) const;
 
+	/*
+	 * 	These are used to differentiate program points.
+	 * 	Since we store them in sets, these are useful
+	 * 	to implement the prevention of duplication, as well
+	 * 	as ordering.
+	 */
 	bool operator==(const ProgramPoint& o) const;
 	bool operator!=(const ProgramPoint& o) const;
 	bool operator<(const ProgramPoint& o) const;
 	bool operator>(const ProgramPoint& o) const;
 
+	/*
+	 * 	Return the type of a program point
+	 */
 	inline bool is_join() const;
 	inline bool is_branch() const;
 	inline bool is_copy() const;
@@ -163,7 +268,17 @@ public:
 
 	void addNode(Value* V);
 	bool hasNode(Value* V);
+
+	/*
+	 *  Add edge to graph.
+	 *  If from is not in the graph, we do not add it!
+	 */
 	void addEdge(Value* from, Value* to);
+
+	/*
+	 *  Return if an edge is present in the graph
+	 *  We do not create any new nodes.
+	 */
 	bool hasEdge(Value* from, Value* to);
 };
 

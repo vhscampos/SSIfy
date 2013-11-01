@@ -12,15 +12,6 @@ const std::string SSIfy::phiname = "SSI_phi";
 const std::string SSIfy::signame = "SSI_sigma";
 const std::string SSIfy::copname = "SSI_copy";
 
-/*
- * 	Command-line options
- * 		-v: 		verbose mode
- * 		-set xxxx:	set what will be the initial points (x either 1 or 0)
- *			- 1st: exit of conditionals, downwards
- *			- 2nd: exit of conditionals, upwards
- *			- 3rd: uses, downwards
- *			- 4th: uses, upwards
- */
 static cl::opt<bool> Verbose("v", cl::desc("Print details"));
 static cl::opt<std::string> ProgramPointOptions("set",
 		cl::desc("Starting program points"), cl::Required);
@@ -52,7 +43,7 @@ bool SSIfy::runOnFunction(Function &F)
 		for (BBit = BB.begin(), BBend = BB.end(); BBit != BBend; ++BBit) {
 			Instruction& I = *BBit;
 
-			dragon(&I);
+			run(&I);
 		}
 	}
 
@@ -65,14 +56,7 @@ bool SSIfy::runOnFunction(Function &F)
 	return true;
 }
 
-/*
- * 	Determines what is the splitting strategy for the variable V
- * 	and calls the SSIfy functions in order
- * 		- split
- * 		- rename
- * 		- clean
- */
-void SSIfy::dragon(Instruction* V)
+void SSIfy::run(Instruction* V)
 {
 	std::set<ProgramPoint> Iup;
 	std::set<ProgramPoint> Idown;
@@ -129,16 +113,13 @@ void SSIfy::dragon(Instruction* V)
 
 	split(V, Iup, Idown);
 	rename_initial(V);
-//	clean(V);
 }
 
-/*
- * 	Splits live range of the variable V according to the splitting strategy
- * 	defined as input.
- */
 void SSIfy::split(Instruction* V, std::set<ProgramPoint> Iup,
 		std::set<ProgramPoint> Idown)
 {
+	NamedRegionTimer clk_split("Split");
+
 	std::set<ProgramPoint> Sup;
 	std::set<ProgramPoint> Sdown;
 
@@ -226,23 +207,12 @@ void SSIfy::split(Instruction* V, std::set<ProgramPoint> Iup,
 		}
 	}
 
-//	for (std::set<ProgramPoint>::iterator sit = Sdown.begin(), send =
-//			Sdown.end(); sit != send; ++sit) {
-//		errs() << (*sit).I->getName() << " " << (*sit).P << "\n";
-//	}
-//	errs() << "\n";
-
 	// Finally
 	std::set<ProgramPoint> S;
 	S.insert(Iup.begin(), Iup.end());
 	S.insert(Idown.begin(), Idown.end());
 	S.insert(Sup.begin(), Sup.end());
 	S.insert(Sdown.begin(), Sdown.end());
-
-//	for (std::set<ProgramPoint>::iterator sit = S.begin(), send = S.end();
-//			sit != send; ++sit) {
-//		errs() << (*sit).I->getName() << " " << (*sit).P << "\n";
-//	}
 
 	/*
 	 * 	Split live range of v by inserting sigma, phi, and copies
@@ -284,7 +254,7 @@ void SSIfy::split(Instruction* V, std::set<ProgramPoint> Iup,
 						new_phi->insertBefore(insertion_point);
 						break;
 					default:
-						errs() << "Problem here";
+						errs() << "Problem here1";
 						break;
 				}
 
@@ -317,14 +287,8 @@ void SSIfy::split(Instruction* V, std::set<ProgramPoint> Iup,
 					++NumSigmasCreated;
 				}
 			}
-			else {
+			else if (point.is_copy()){
 				// copy
-				// FIXME: TEMPORARY SOLUTION!!!
-				// If the program point is in fact an SSI_copy
-				// we ignore it. Check with Fernando.
-				if (is_SSIcopy(point.I)) {
-					continue;
-				}
 
 				// Zero value
 				ConstantInt* zero = ConstantInt::get(
@@ -339,7 +303,7 @@ void SSIfy::split(Instruction* V, std::set<ProgramPoint> Iup,
 						new_copy->insertAfter(insertion_point);
 						break;
 					default:
-						errs() << "Problem here";
+						errs() << "Problem here2";
 						break;
 				}
 
@@ -354,10 +318,6 @@ void SSIfy::split(Instruction* V, std::set<ProgramPoint> Iup,
 	}
 }
 
-/*
- * 	Renaming function
- * 	Called after the creation of new variables (split function)
- */
 void SSIfy::rename_initial(Instruction* V)
 {
 	RenamingStack stack(V);
@@ -367,13 +327,10 @@ void SSIfy::rename_initial(Instruction* V)
 	rename(root, stack);
 }
 
-/*
- * 	Passes through all instructions in BB to update uses of the
- * 	variable V to its most recent definition, as well as registering
- * 	new definitions when it takes place
- */
 void SSIfy::rename(BasicBlock* BB, RenamingStack& stack)
 {
+	NamedRegionTimer clk_rename("Rename");
+
 	const Value* V = stack.getValue();
 
 	if (Verbose) {
@@ -390,12 +347,18 @@ void SSIfy::rename(BasicBlock* BB, RenamingStack& stack)
 		// foreach instruction u in n that uses v
 		// We do this renaming only if it is not a SSI_phi
 		// because renaming in SSI_phi is done in a step afterwards
+		bool has_newdef = false;
+
 		if (!phi || !is_SSIphi(phi)) {
 			for (User::op_iterator i = I->op_begin(), e = I->op_end(); i != e;
 					++i) {
 				Value *used = *i;
 
 				if (used == V) {
+					if (!is_actual(I)) {
+						has_newdef = true;
+					}
+
 					set_use(stack, I);
 					break;
 				}
@@ -403,17 +366,19 @@ void SSIfy::rename(BasicBlock* BB, RenamingStack& stack)
 		}
 
 		// NEW DEFINITION OF V
-		// sigma or phi
-		if (phi) {
-			set_def(stack, phi);
-		}
-		// copy
-		else if (is_SSIcopy(I)) {
-			set_def(stack, I);
+		// sigma, phi or copy
+		if (has_newdef) {
+			if (phi) {
+				set_def(stack, phi);
+			}
+			// copy
+			else if (is_SSIcopy(I)) {
+				set_def(stack, I);
+			}
 		}
 	}
 
-	// Searchs for SSI_phis in the successors, in order to rename uses of V in them
+	// Searches for SSI_phis in the successors to rename uses of V in them
 	for (succ_iterator sit = succ_begin(BB), send = succ_end(BB); sit != send;
 			++sit) {
 		BasicBlock* BBsucc = *sit;
@@ -439,21 +404,18 @@ void SSIfy::rename(BasicBlock* BB, RenamingStack& stack)
 	}
 }
 
-/*
- * 	Renames uses of the variable V in the instruction inst to its last definition according
- * 	to the stack of definitions. Note that it pops definitions from the stack until it finds
- * 	one that is correct, i.e., dominates the instruction inst.
- *
- * 	from stands for pointer to the predecessor block. It is used when renaming variables
- * 	inside a SSI_phi to tell which incoming value should be renamed.
- *
- * 	Renaming inside a SSI_phi changes the function's logic. It can be tricky. We cannot simply
- * 	check if popped dominates inst anymore.
- */
 void SSIfy::set_use(RenamingStack& stack, Instruction* inst, BasicBlock* from)
 {
 	Value* V = stack.getValue();
 	Instruction* popped = 0;
+
+	// If the stack is initially empty,
+	// renaming didn't reach the initial
+	// definition of V yet, so no point
+	// in renaming yet
+	if (stack.empty()) {
+		return;
+	}
 
 	// If from != null, we are dealing with a renaming
 	// inside a SSI_phi.
@@ -529,18 +491,14 @@ void SSIfy::set_use(RenamingStack& stack, Instruction* inst, BasicBlock* from)
 	}
 }
 
-/*
- * 	Pushes into the stack a new definition of the variable V, that being the
- * 	instruction inst
- */
 void SSIfy::set_def(RenamingStack& stack, Instruction* inst)
 {
 	// Check if inst contains an use of V. If not
 	// we get out of here.
-	if (std::find(inst->op_begin(), inst->op_end(), stack.getValue())
-			== inst->op_end()) {
-		return;
-	}
+//	if (std::find(inst->op_begin(), inst->op_end(), stack.getValue())
+//			== inst->op_end()) {
+//		return;
+//	}
 
 	if (Verbose) {
 		errs() << "set_def: Pushing " << inst->getName() << " to the stack of "
@@ -548,15 +506,11 @@ void SSIfy::set_def(RenamingStack& stack, Instruction* inst)
 	}
 
 	stack.push(inst);
-
-//	this->versions[stack.getValue()].insert(inst);
 }
 
-/*
- * 	Based on my new algorithm. Needs extensive testing.
- */
 void SSIfy::clean()
 {
+	NamedRegionTimer clk_clean("Clean");
 	/*
 	 This structure saves all instructions that are marked to be erased.
 	 We cannot simply erase on sight because of cases like this:
@@ -620,7 +574,6 @@ void SSIfy::clean()
 				}
 
 				// Second case
-				// FIXME: may be wrong
 				if (!this->DTmap->dominates(V, ssi_phi)) {
 
 					if (Verbose) {
@@ -652,7 +605,7 @@ void SSIfy::clean()
 				}
 			}
 			else {
-				errs() << "Problem here5\n";
+				errs() << "Problem here3\n";
 			}
 		}
 	}
@@ -687,7 +640,6 @@ void SSIfy::clean()
 	}
 }
 
-// TODO: remove unnecessary created instructions
 /*void SSIfy::clean(Instruction* V) {
  std::set<Instruction*> defined;
  std::set<Instruction*> used;
@@ -845,7 +797,6 @@ bool SSIfy::is_SSIcopy(const Instruction* I)
 	return I->getName().startswith(copname);
 }
 
-// For a given BasicBlock, return its iterated dominance frontier as a set
 SmallPtrSet<BasicBlock*, 4> SSIfy::get_iterated_df(BasicBlock* BB)
 {
 	SmallPtrSet<BasicBlock*, 4> iterated_df;
@@ -918,11 +869,6 @@ SmallPtrSet<BasicBlock*, 4> SSIfy::get_iterated_pdf(BasicBlock* BB)
 	return iterated_pdf;
 }
 
-/*
- * 	Checks if I is an actual instruction.
- * 	Actual instruction is defined as not being created by us,
- * 	that is, sigma, artificial phi, and copy.
- */
 bool SSIfy::is_actual(const Instruction* I)
 {
 	if (is_SSIphi(I)) {
@@ -938,14 +884,6 @@ bool SSIfy::is_actual(const Instruction* I)
 	return true;
 }
 
-/*
- * 	Creates a topological sorting of instructions in to_be_erased,
- * 	based on relations from this->versions.
- * 	That is, we sort to_be_erased in a way that, when we traverse it later,
- * 	we are able to eraseFromParent in a order that doesn't break.
- *
- * 	Algorithm from Cormen 2001 and Wikipedia.
- */
 SmallVector<Instruction*, 8> SSIfy::get_topsort_versions(
 		const SmallPtrSet<Instruction*, 16>& to_be_erased)
 {
@@ -1084,11 +1022,6 @@ bool ProgramPoint::operator>(const ProgramPoint& o) const
 	return !(*this == o) && !(*this < o);
 }
 
-/*
- * Checks if this program point doesn't have a definition of V already
- * We have three cases: sigma, phi, or copy
- * Each one has a different logic.
- */
 bool ProgramPoint::not_definition_of(const Value* V) const
 {
 	const Instruction* I = this->I;
@@ -1144,20 +1077,23 @@ bool ProgramPoint::not_definition_of(const Value* V) const
 
 		case ProgramPoint::Self:
 			// copy case
-			// we check this case by looking at the instruction AFTER, since
-			// because I is actually the instruction for which a copy would have
-			// been created. This copy, therefore, is the next instruction.
+			//
+			// We walk through the instructions that follow I looking for
+			// a created SSI_copy that redefines V already.
+			// If it exists, then there's a definition already.
+			for (BasicBlock::const_iterator bit = BasicBlock::const_iterator(
+					*I); SSIfy::is_SSIcopy(&*bit); ++bit) {
 
-			// This next line is just a simple way to get the next instruction.
-			// Don't panic.
-			const Instruction* next = &*(++BasicBlock::const_iterator(*I));
+				const Instruction* next = &*bit;
 
-			if (SSIfy::is_SSIcopy(next)) {
-				// Check if operand is V
-				if (next->getOperand(0) == V) {
-					return false;
+				if (SSIfy::is_SSIcopy(next)) {
+					// Check if operand is V
+					if (next->getOperand(0) == V) {
+						return false;
+					}
 				}
 			}
+
 			break;
 	}
 
@@ -1271,10 +1207,6 @@ bool Graph::hasNode(Value* V)
 	return this->vertices.count(V);
 }
 
-/*
- *  Add edge to graph.
- *  If from is not in the graph, we do not add it!
- */
 void Graph::addEdge(Value* from, Value* to)
 {
 	DenseMap<Value*, SmallPtrSet<Value*, 4> >::iterator it =
@@ -1285,10 +1217,6 @@ void Graph::addEdge(Value* from, Value* to)
 	}
 }
 
-/*
- *  Return if an edge is present in the graph
- *  We do not create any new nodes.
- */
 bool Graph::hasEdge(Value* from, Value* to)
 {
 	DenseMap<Value*, SmallPtrSet<Value*, 4> >::iterator it =
