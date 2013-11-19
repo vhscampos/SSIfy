@@ -118,8 +118,6 @@ void SSIfy::run(Instruction* V)
 void SSIfy::split(Instruction* V, std::set<ProgramPoint> Iup,
 		std::set<ProgramPoint> Idown)
 {
-	NamedRegionTimer clk_split("Split");
-
 	std::set<ProgramPoint> Sup;
 	std::set<ProgramPoint> Sdown;
 
@@ -228,6 +226,7 @@ void SSIfy::split(Instruction* V, std::set<ProgramPoint> Iup,
 			// Check if new variable is actually not necessary
 			// NOTE: it only checks if it is NOT necessary. That doesn't
 			// mean that it is necessary if the check returns false.
+			// Removing this check makes this pass 10x slower.
 			if (isNotNecessary(insertion_point, V)) {
 				continue;
 			}
@@ -329,8 +328,6 @@ void SSIfy::rename_initial(Instruction* V)
 
 void SSIfy::rename(BasicBlock* BB, RenamingStack& stack)
 {
-	NamedRegionTimer clk_rename("Rename");
-
 	const Value* V = stack.getValue();
 
 	if (Verbose) {
@@ -510,7 +507,6 @@ void SSIfy::set_def(RenamingStack& stack, Instruction* inst)
 
 void SSIfy::clean()
 {
-	NamedRegionTimer clk_clean("Clean");
 	/*
 	 This structure saves all instructions that are marked to be erased.
 	 We cannot simply erase on sight because of cases like this:
@@ -814,7 +810,7 @@ SmallPtrSet<BasicBlock*, 4> SSIfy::get_iterated_df(BasicBlock* BB)
 		current = stack.back();
 		stack.pop_back();
 
-		DominanceFrontier::DomSetType frontier =
+		const DominanceFrontier::DomSetType& frontier =
 				this->DFmap->find(current)->second;
 
 		for (DominanceFrontier::DomSetType::iterator fit = frontier.begin(),
@@ -850,7 +846,7 @@ SmallPtrSet<BasicBlock*, 4> SSIfy::get_iterated_pdf(BasicBlock* BB)
 		current = stack.back();
 		stack.pop_back();
 
-		PostDominanceFrontier::DomSetType frontier =
+		const PostDominanceFrontier::DomSetType& frontier =
 				this->PDFmap->find(current)->second;
 
 		for (PostDominanceFrontier::DomSetType::iterator fit = frontier.begin(),
