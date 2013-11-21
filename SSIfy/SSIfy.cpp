@@ -168,8 +168,8 @@ void SSIfy::split(Instruction* V, std::set<ProgramPoint> Iup,
 	NewSet.insert(Sup.begin(), Sup.end());
 	NewSet.insert(Idown.begin(), Idown.end());
 
-	// Creation of Sdown. Logic defined in the paper as well.
 	for (std::set<ProgramPoint>::iterator sit = NewSet.begin(), send =
+	// Creation of Sdown. Logic defined in the paper as well.
 			NewSet.end(); sit != send; ++sit) {
 		ProgramPoint point = *sit;
 		Instruction* I = point.I;
@@ -286,7 +286,7 @@ void SSIfy::split(Instruction* V, std::set<ProgramPoint> Iup,
 					++NumSigmasCreated;
 				}
 			}
-			else if (point.is_copy()){
+			else if (point.is_copy()) {
 				// copy
 
 				// Zero value
@@ -346,19 +346,23 @@ void SSIfy::rename(BasicBlock* BB, RenamingStack& stack)
 		// because renaming in SSI_phi is done in a step afterwards
 		bool has_newdef = false;
 
-		if (!phi || !is_SSIphi(phi)) {
-			for (User::op_iterator i = I->op_begin(), e = I->op_end(); i != e;
-					++i) {
-				Value *used = *i;
+		// Check if I has an use of V
+		// If it does, then we mark I to be a new definition of V
+		// then we call set_def on it later on
+		for (User::op_iterator i = I->op_begin(), e = I->op_end(); i != e;
+				++i) {
+			Value *used = *i;
 
-				if (used == V) {
-					if (!is_actual(I)) {
-						has_newdef = true;
-					}
-
-					set_use(stack, I);
-					break;
+			if (used == V) {
+				if (!is_actual(I)) {
+					has_newdef = true;
 				}
+
+				if (!is_SSIphi(I)) {
+					set_use(stack, I);
+				}
+
+				break;
 			}
 		}
 
@@ -438,7 +442,8 @@ void SSIfy::set_use(RenamingStack& stack, Instruction* inst, BasicBlock* from)
 		while (!stack.empty()) {
 			popped = stack.peek();
 
-			if (!this->DTmap->dominates(popped, from)) {
+			if ((popped->getParent() != from)
+					&& (!this->DTmap->dominates(popped, from))) {
 				stack.pop();
 
 				if (Verbose) {
@@ -490,12 +495,9 @@ void SSIfy::set_use(RenamingStack& stack, Instruction* inst, BasicBlock* from)
 
 void SSIfy::set_def(RenamingStack& stack, Instruction* inst)
 {
-	// Check if inst contains an use of V. If not
-	// we get out of here.
-//	if (std::find(inst->op_begin(), inst->op_end(), stack.getValue())
-//			== inst->op_end()) {
-//		return;
-//	}
+	// Note that this function *doesn't* check if inst contains
+	// an use of stack.Value!
+	// Verification has to be done by the user of this function
 
 	if (Verbose) {
 		errs() << "set_def: Pushing " << inst->getName() << " to the stack of "
@@ -572,6 +574,17 @@ void SSIfy::clean()
 				// Second case
 				if (!this->DTmap->dominates(V, ssi_phi)) {
 
+					if (Verbose) {
+						errs() << "Erasing " << ssi_phi->getName() << "\n";
+					}
+
+					to_be_erased.insert(ssi_phi);
+					maptooldvalues[ssi_phi] = V;
+
+					continue;
+				}
+
+				if (ssi_phi->use_empty()) {
 					if (Verbose) {
 						errs() << "Erasing " << ssi_phi->getName() << "\n";
 					}
@@ -810,8 +823,8 @@ SmallPtrSet<BasicBlock*, 4> SSIfy::get_iterated_df(BasicBlock* BB)
 		current = stack.back();
 		stack.pop_back();
 
-		const DominanceFrontier::DomSetType& frontier =
-				this->DFmap->find(current)->second;
+		const DominanceFrontier::DomSetType& frontier = this->DFmap->find(
+				current)->second;
 
 		for (DominanceFrontier::DomSetType::iterator fit = frontier.begin(),
 				fend = frontier.end(); fit != fend; ++fit) {
@@ -846,8 +859,8 @@ SmallPtrSet<BasicBlock*, 4> SSIfy::get_iterated_pdf(BasicBlock* BB)
 		current = stack.back();
 		stack.pop_back();
 
-		const PostDominanceFrontier::DomSetType& frontier =
-				this->PDFmap->find(current)->second;
+		const PostDominanceFrontier::DomSetType& frontier = this->PDFmap->find(
+				current)->second;
 
 		for (PostDominanceFrontier::DomSetType::iterator fit = frontier.begin(),
 				fend = frontier.end(); fit != fend; ++fit) {
