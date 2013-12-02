@@ -1,8 +1,8 @@
 /*
  * SSIfy.h
  *
- *  Created on: Sep 6, 2013
- *      Author: vhscampos
+ * 		SSIfy: a parameterized tool to convert programs for sparse analyses
+ *		Copyright (C) 2013  Victor Hugo Sperle Campos
  */
 
 /*

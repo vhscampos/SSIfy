@@ -3,6 +3,11 @@
 //		This file is licensed under the General Public License v2.
 //
 //===----------------------------------------------------------------------===//
+/*
+ * 		SSIfy: a parameterized tool to convert programs for sparse analyses
+ *		Copyright (C) 2013  Victor Hugo Sperle Campos
+ */
+ 
 #include "SSIfy.h"
 
 using namespace llvm;
@@ -591,6 +596,8 @@ void SSIfy::clean()
 
 					to_be_erased.insert(ssi_phi);
 					maptooldvalues[ssi_phi] = V;
+
+					continue;
 				}
 			}
 			// SSI_sigmas and SSI_copies have two cases for cleaning
