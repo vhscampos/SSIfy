@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset='utf-8'>
+    <meta http-equiv="X-UA-Compatible" content="chrome=1">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+    <link href='https://fonts.googleapis.com/css?family=Architects+Daughter' rel='stylesheet' type='text/css'>
+    <link rel="stylesheet" type="text/css" href="stylesheets/stylesheet.css" media="screen">
+    <link rel="stylesheet" type="text/css" href="stylesheets/github-light.css" media="screen">
+    <link rel="stylesheet" type="text/css" href="stylesheets/print.css" media="print">
+
+    <!--[if lt IE 9]>
+    <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+
+    <title>SSIfy by vhscampos</title>
+  </head>
+
+  <body>
+    <header>
+      <div class="inner">
+        <h1>SSIfy</h1>
+        <h2>A parameterized tool for LLVM to convert programs for static analyses.</h2>
+        <a href="https://github.com/vhscampos/SSIfy" class="button"><small>View project on</small> GitHub</a>
+      </div>
+    </header>
+
+    <div id="content-wrapper">
+      <div class="inner clearfix">
+        <section id="main-content">
+          <h2>
+<a id="overview" class="anchor" href="#overview" aria-hidden="true"><span class="octicon octicon-link"></span></a>Overview</h2>
+
+<p>SSIfy is a parameterized tool for constructing program representations suitable for program static analyses. Given an input program, it can be converted to forms such as Extended Static Single Assignment, Static Single Use, etc.</p>
+
+<p>The main motivation is to offer an all-in-one solution, which is capable of producing program representations that combine properties of different forms. That is, one can transform a program to a representation which is, loosely speaking, e-SSA and SSU at the same time.</p>
+
+<p>Current version: 2.0.</p>
+
+<h2>
+<a id="compatibility" class="anchor" href="#compatibility" aria-hidden="true"><span class="octicon octicon-link"></span></a>Compatibility</h2>
+
+<p>SSIfy works on LLVM 3.7. Along with installing SSIfy, it's necessary to deploy a modified version of LLVM's Dominators.h, also provided here.</p>
+
+<h2>
+<a id="modes-of-operation" class="anchor" href="#modes-of-operation" aria-hidden="true"><span class="octicon octicon-link"></span></a>Modes of operation</h2>
+
+<p>SSIfy has two modes of operation: upwards and downwards. These should be selected according to the purpose of the analysis that will follow the transformation. That is, if the analysis flows information down (e.g. tainted flow analysis, range analysis), you should set the downwards mode on. Likewise, if the analysis flows information up (e.g. class inference), you should set the upwards mode on.</p>
+
+<p>In conjunction with the flow direction option, you can also specify where the live range splitting should occur. The two options are (i) in the exit of conditional branches and (ii) after uses of values.</p>
+
+<h2>
+<a id="implementation" class="anchor" href="#implementation" aria-hidden="true"><span class="octicon octicon-link"></span></a>Implementation</h2>
+
+<p>This is done as a compiler pass that works on LLVM 3.7, written in C++.</p>
+
+<h2>
+<a id="requirements" class="anchor" href="#requirements" aria-hidden="true"><span class="octicon octicon-link"></span></a>Requirements</h2>
+
+<p>In order to use SSIfy on LLVM bitcode programs, one <em>has</em> to run it through the following passes first:</p>
+
+<ol>
+<li><p>mem2reg;</p></li>
+<li><p>break-crit-edges;</p></li>
+</ol>
+
+<p>Also, for cosmetic reasons, it is recommended to run <em>instnamer</em> pass after all passes that create new variables.</p>
+
+<h2>
+<a id="installing" class="anchor" href="#installing" aria-hidden="true"><span class="octicon octicon-link"></span></a>Installing</h2>
+
+<ol>
+<li>Build LLVM: <a href="http://llvm.org/docs/GettingStarted.html">http://llvm.org/docs/GettingStarted.html</a>
+</li>
+<li>Put <em>Dominators.h</em> inside <em>llvm/include/llvm/IR/</em>.</li>
+<li>Put the <em>SSIfy</em> folder inside <em>llvm/lib/Transforms/</em>.</li>
+<li>Build SSIfy by running <em>make</em> in the root of the build dir.</li>
+</ol>
+
+<h2>
+<a id="how-to-run" class="anchor" href="#how-to-run" aria-hidden="true"><span class="octicon octicon-link"></span></a>How to run</h2>
+
+<p>After building LLVM and SSIfy, you can try it with the command:</p>
+
+<p>$ opt -mem2reg -break-crit-edges [... -instnamer] -load /path/to/SSIfy.so -ssify [-v] <em>FLAGS</em> Input.bc -o Output.bc</p>
+
+<p>-v: verbose mode</p>
+
+<p><em>FLAGS</em> determine how SSIfy will split live ranges in the program:</p>
+
+<ol>
+<li>-essa: Extended Static Single Assignment</li>
+<li>-ssu: Static Single Use</li>
+<li>-essa-up: upwards e-SSA</li>
+<li>-ssu-up upwards SSU</li>
+</ol>
+
+<h2>
+<a id="further" class="anchor" href="#further" aria-hidden="true"><span class="octicon octicon-link"></span></a>Further</h2>
+
+<p>If you have any questions or suggestions, I'd be happy to address them. Reach out on victorsc at dcc.ufmg.br</p>
+        </section>
+
+        <aside id="sidebar">
+          <a href="https://github.com/vhscampos/SSIfy/zipball/master" class="button">
+            <small>Download</small>
+            .zip file
+          </a>
+          <a href="https://github.com/vhscampos/SSIfy/tarball/master" class="button">
+            <small>Download</small>
+            .tar.gz file
+          </a>
+
+          <p class="repo-owner"><a href="https://github.com/vhscampos/SSIfy"></a> is maintained by <a href="https://github.com/vhscampos">vhscampos</a>.</p>
+
+          <p>This page was generated by <a href="https://pages.github.com">GitHub Pages</a> using the Architect theme by <a href="https://twitter.com/jasonlong">Jason Long</a>.</p>
+        </aside>
+      </div>
+    </div>
+
+            <script type="text/javascript">
+            var gaJsHost = (("https:" == document.location.protocol) ? "https://ssl." : "http://www.");
+            document.write(unescape("%3Cscript src='" + gaJsHost + "google-analytics.com/ga.js' type='text/javascript'%3E%3C/script%3E"));
+          </script>
+          <script type="text/javascript">
+            try {
+              var pageTracker = _gat._getTracker("UA-54492898-3");
+            pageTracker._trackPageview();
+            } catch(err) {}
+          </script>
+
+  </body>
+</html>
