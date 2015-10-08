@@ -12,8 +12,8 @@ CURDIR  := $(shell cd .; pwd)
 PROGDIR := $(PROJ_SRC_ROOT)
 RELDIR  := $(subst $(PROGDIR),,$(CURDIR))
 
-LIBDIR	:= /home/vhscampos/Research/llvm/Debug+Asserts/lib
-FLAGS	:= 1010
+LIBDIR	:= llvm/Debug+Asserts/lib
+FLAGS	:= -essa
 
 $(PROGRAMS_TO_TEST:%=test.$(TEST).%): \
 test.$(TEST).%: Output/%.$(TEST).report.txt
@@ -27,7 +27,7 @@ Output/%.$(TEST).report.txt: Output/%.linked.rbc $(LOPT) \
 	@echo ">>> ========= '$(RELDIR)/$*' Program" >> $@
 	@echo "---------------------------------------------------------------" >> $@
 	@-$(LOPT) -mem2reg -break-crit-edges -instnamer -load $(LIBDIR)/SSIfy.so \
-	         -ssify -set $(FLAGS) -stats -time-passes -disable-output $< 2>>$@ 
+	         -ssify $(FLAGS) -stats -time-passes -disable-output $< 2>>$@ 
 summary:
 	@$(MAKE) TEST=ssify | egrep '======|ssify -'
 
