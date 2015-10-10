@@ -22,11 +22,14 @@
 //=====--------------------------------------------------------------------=====
 
 #include "SSIfy.h"
-#include "llvm/Analysis/PostDominators.h"
+#include "llvm/Analysis/IteratedDominanceFrontier.h"
 #include "llvm/IR/Constants.h"
-#include "llvm/IR/InstIterator.h"
-#include "llvm/Support/raw_ostream.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/Function.h"
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/raw_ostream.h"
+
+using namespace llvm;
 
 // Definition of static members of SSIfy
 const std::string SSIfy::phiname = "SSIfy_phi";

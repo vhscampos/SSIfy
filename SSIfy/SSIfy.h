@@ -26,21 +26,17 @@
 
 #define DEBUG_TYPE "ssify"
 
-#include "llvm/ADT/Statistic.h"
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/SmallPtrSet.h"
+#include "llvm/Pass.h"
 #include "llvm/ADT/DenseSet.h"
-#include "llvm/Analysis/IteratedDominanceFrontier.h"
-#include "llvm/IR/Function.h"
-#include "llvm/IR/Instructions.h"
-#include "llvm/IR/CFG.h"
+#include "llvm/ADT/SmallBitVector.h"
+#include "llvm/ADT/SmallPtrSet.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/Statistic.h"
 #include "llvm/IR/Dominators.h"
 #include <string>
 #include <memory>
 
-using namespace llvm;
-
-namespace {
+namespace llvm {
 
 STATISTIC(NumPHIsCreated, "Number of SSIfy_phis created");
 STATISTIC(NumSigmasCreated, "Number of SSIfy_sigmas created");
@@ -50,6 +46,12 @@ STATISTIC(NumSigmasDeleted, "Number of SSIfy_sigmas deleted");
 STATISTIC(NumCopiesDeleted, "Number of SSIfy_copies deleted");
 
 // Forward declarations
+class Value;
+class Function;
+class BasicBlock;
+class Instruction;
+class DominatorTree;
+class IDFCalculator;
 class ProgramPoint;
 class RenamingStack;
 
@@ -86,8 +88,8 @@ protected:
   // The function computeLiveness does this clearing
   SmallPtrSet<BasicBlock *, 32> liveBlocks;
 
-  // Command-line options for program points
-  std::vector<bool> flags;
+  // Command-line options for program points.
+  SmallBitVector flags;
 
   // This map associates variables with the set of new variables that have been
   // created for them
