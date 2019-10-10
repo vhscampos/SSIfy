@@ -50,4 +50,4 @@ _FLAGS_ determine how SSIfy will split live ranges in the program:
 
 ## Further
 
-If you have any questions or suggestions, I'd be happy to address them. Reach out on victorsc at dcc.ufmg.br
+If you have any questions or suggestions, I'd be happy to address them. Reach out on vhscampos -at- gmail.com
